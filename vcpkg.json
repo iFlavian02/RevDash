@@ -1,0 +1,15 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "revdash",
+  "version-string": "0.1.0",
+  "dependencies": [
+    "boost-asio",
+    "boost-lockfree",
+    "tl-expected",
+    "nlohmann-json",
+    "sqlite3",
+    "spdlog",
+    "cli11",
+    "catch2"
+  ]
+}
