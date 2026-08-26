@@ -1,0 +1,8 @@
+CompileFlags:
+  CompilationDatabase: "."
+  Add:
+    - "-std=c++20"
+    - "-ID:/Apps/RevDash/headers"
+    - "-isystemD:/Apps/RevDash/build/windows-msvc/vcpkg_installed/x64-windows/include"
+    - "-Wno-unknown-warning-option"
+    - "-Wno-unused-command-line-argument"
