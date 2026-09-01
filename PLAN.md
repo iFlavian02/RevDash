@@ -902,30 +902,30 @@ ctest --preset windows-msvc-debug -R synthetic_source --output-on-failure
 
 ## Step 4.1: Build cross-platform serial transport abstraction
 
-* [ ] Implement `ISerialTransport` using Boost.Asio.
-* [ ] Support asynchronous:
+* [x] Implement `ISerialTransport` using Boost.Asio.
+* [x] Support asynchronous:
 
   * open;
   * close;
   * read;
   * write;
   * cancellation.
-* [ ] Implement Windows COM enumeration using SetupAPI.
-* [ ] Capture when available:
+* [x] Implement Windows COM enumeration using SetupAPI.
+* [x] Capture when available:
 
   * COM identifier;
   * friendly name;
   * VID/PID;
   * device description;
   * Bluetooth SPP hints.
-* [ ] Treat USB serial and Bluetooth Classic SPP as serial transports after enumeration.
-* [ ] Support common baud rates:
+* [x] Treat USB serial and Bluetooth Classic SPP as serial transports after enumeration.
+* [x] Support common baud rates:
 
   * 9600;
   * 38400;
   * 115200.
-* [ ] Driver reports successful baud/configuration for higher-level persistence.
-* [ ] Handle unplug/device removal as asynchronous transport failure.
+* [x] Driver reports successful baud/configuration for higher-level persistence.
+* [x] Handle unplug/device removal as asynchronous transport failure.
 
 ### Tests
 

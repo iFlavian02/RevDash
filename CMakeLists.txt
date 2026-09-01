@@ -29,6 +29,7 @@ include(Dependencies)
 add_library(revdash_core STATIC
     src/core/async_data_source.cpp
     src/core/types.cpp
+    src/drivers/elm327/serial_transport.cpp
     src/drivers/synthetic/synthetic.cpp
     src/protocol/diagnostics.cpp
     src/protocol/isotp_trace.cpp
@@ -48,6 +49,10 @@ target_link_libraries(revdash_core
         unofficial::sqlite3::sqlite3
         spdlog::spdlog
 )
+
+if(WIN32)
+    target_link_libraries(revdash_core PRIVATE setupapi advapi32)
+endif()
 
 get_target_property(revdash_core_link_libraries revdash_core LINK_LIBRARIES)
 foreach(revdash_core_dependency IN LISTS revdash_core_link_libraries)
@@ -130,6 +135,7 @@ add_executable(revdash_unit_tests
     tests/unit/test_diagnostics.cpp
     tests/unit/test_isotp_trace.cpp
     tests/unit/test_synthetic.cpp
+    tests/unit/test_serial_transport.cpp
 )
 
 target_link_libraries(revdash_unit_tests
@@ -154,6 +160,7 @@ add_test(NAME isotp_trace COMMAND revdash_unit_tests "[isotp_trace]")
 add_test(NAME synthetic_physics COMMAND revdash_unit_tests "[synthetic_physics]")
 add_test(NAME synthetic_faults COMMAND revdash_unit_tests "[synthetic_faults]")
 add_test(NAME synthetic_source COMMAND revdash_unit_tests "[synthetic_source]")
+add_test(NAME serial_transport COMMAND revdash_unit_tests "[serial_transport]")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp

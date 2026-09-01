@@ -55,4 +55,10 @@ Simulation faults are procedural rather than recorded fixtures. Misfire produces
 
 `SyntheticDataSource` derives from `AsyncDataSource`, so it preserves the common non-blocking lifecycle and source-worker callback rules. It accepts complete canonical requests and emits complete logical Mode 01/02/03/04/07/09 responses with virtual CAN ECU addresses. Unsupported requests receive an ECU negative response. Configured reply latency is scheduled on the source worker and cancelled during source destruction; it never creates an independent I/O thread. Public controls post throttle, ambient, fault, and reset changes to that same worker.
 
-No physical adapter, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.
+No physical ELM327 source, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.
+
+## Serial transport boundary
+
+Stage 4.1 introduces a driver-level `ISerialTransport` boundary for ELM327 work. It owns asynchronous open, close, read, write, and cancellation operations; buffer ownership remains with the caller until each read/write completion. `AsioSerialTransport` owns its Boost.Asio serial-port executor and maps cancellation and I/O failures into core transport results. The portable interface is mockable and does not require hardware in tests.
+
+On Windows, physical port discovery uses SetupAPI's present Ports device class. It normalizes COM identifiers, reads the friendly name, device description, and hardware identifiers when present, extracts VID/PID where available, and marks Bluetooth Classic SPP hints. USB serial and Bluetooth SPP are otherwise the same serial transport. The currently supported physical baud rates are 9600, 38400, and 115200; the successful normalized configuration remains available for higher-layer persistence.
