@@ -3,7 +3,7 @@
 ## Toolchain
 
 - RevDash uses C++20 with CMake 3.30 or later.
-- Windows v1 is built with MSVC 2022 x64 and dynamically linked runtime dependencies.
+- Windows v1 is built with MSVC 2022 x64 and dynamically linked runtime dependencies. The native API baseline is `_WIN32_WINNT=0x0A00`, required by the adopted Boost.Asio configuration.
 - vcpkg manifest mode is required. The builtin registry baseline in `vcpkg-configuration.json` is pinned; dependency changes must update that baseline deliberately.
 - Windows presets are `windows-msvc`, `windows-msvc-debug`, `windows-msvc-release`, and `windows-msvc-asan`. Linux presets are deferred to Stage 10.
 

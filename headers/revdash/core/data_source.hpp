@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -99,8 +100,8 @@ public:
 
     SubscriptionToken() noexcept = default;
 
-    explicit SubscriptionToken(UnsubscribeFn unsubscribe_fn) noexcept
-        : unsubscribe_fn_(std::move(unsubscribe_fn)), active_(true) {}
+    explicit SubscriptionToken(UnsubscribeFn unsubscribe_fn)
+        : state_(std::make_shared<State>(std::move(unsubscribe_fn))) {}
 
     ~SubscriptionToken() {
         reset();
@@ -109,44 +110,57 @@ public:
     SubscriptionToken(const SubscriptionToken&) = delete;
     SubscriptionToken& operator=(const SubscriptionToken&) = delete;
 
-    SubscriptionToken(SubscriptionToken&& other) noexcept
-        : unsubscribe_fn_(std::move(other.unsubscribe_fn_)),
-          active_(other.active_) {
-        other.active_ = false;
-        other.unsubscribe_fn_ = nullptr;
-    }
+    SubscriptionToken(SubscriptionToken&& other) noexcept = default;
 
     SubscriptionToken& operator=(SubscriptionToken&& other) noexcept {
         if (this != &other) {
             reset();
-            unsubscribe_fn_ = std::move(other.unsubscribe_fn_);
-            active_ = other.active_;
-            other.active_ = false;
-            other.unsubscribe_fn_ = nullptr;
+            state_ = std::move(other.state_);
         }
         return *this;
     }
 
     void reset() noexcept {
-        if (active_ && unsubscribe_fn_) {
-            active_ = false;
-            auto fn = std::move(unsubscribe_fn_);
-            unsubscribe_fn_ = nullptr;
-            fn();
+        if (!state_) {
+            return;
+        }
+
+        UnsubscribeFn unsubscribe_fn;
+        {
+            std::lock_guard<std::mutex> lock(state_->mutex);
+            if (!state_->active) {
+                return;
+            }
+            state_->active = false;
+            unsubscribe_fn = std::move(state_->unsubscribe_fn);
+        }
+        if (unsubscribe_fn) {
+            unsubscribe_fn();
         }
     }
 
     [[nodiscard]] bool active() const noexcept {
-        return active_;
+        if (!state_) {
+            return false;
+        }
+        std::lock_guard<std::mutex> lock(state_->mutex);
+        return state_->active;
     }
 
     [[nodiscard]] explicit operator bool() const noexcept {
-        return active_;
+        return active();
     }
 
 private:
-    UnsubscribeFn unsubscribe_fn_{nullptr};
-    bool active_{false};
+    struct State {
+        explicit State(UnsubscribeFn unsubscribe) : unsubscribe_fn(std::move(unsubscribe)) {}
+
+        std::mutex mutex;
+        UnsubscribeFn unsubscribe_fn;
+        bool active{true};
+    };
+
+    std::shared_ptr<State> state_;
 };
 
 class IDataSource {

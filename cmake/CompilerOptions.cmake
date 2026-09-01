@@ -2,6 +2,7 @@ function(revdash_apply_compiler_options target_name)
     target_compile_features(${target_name} PUBLIC cxx_std_20)
 
     if(MSVC)
+        target_compile_definitions(${target_name} PRIVATE _WIN32_WINNT=0x0A00)
         target_compile_options(${target_name} PRIVATE
             /W4
             /WX

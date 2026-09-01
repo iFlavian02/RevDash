@@ -27,6 +27,7 @@ include(Dependencies)
 # Core Engine Library (Qt-Independent)
 # -----------------------------------------------------------------------------
 add_library(revdash_core STATIC
+    src/core/async_data_source.cpp
     src/core/types.cpp
 )
 

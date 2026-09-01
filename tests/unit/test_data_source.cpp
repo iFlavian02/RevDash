@@ -1,9 +1,12 @@
 #include <catch2/catch_test_macros.hpp>
 #include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
+#include "revdash/core/async_data_source.hpp"
 #include "revdash/core/data_source.hpp"
 
 using namespace revdash::core;
@@ -196,6 +199,64 @@ private:
     std::deque<CompletionCallback> pending_transmits_;
 };
 
+class ContractDataSource final : public AsyncDataSource {
+public:
+    ContractDataSource() : AsyncDataSource(DataSourceType::Synthetic) {}
+
+    void emit(const ObdMessage& message) {
+        postToWorker([this, message] { publishMessage(message); });
+    }
+
+    void completeNextTransmit(Result<void> result = makeSuccess()) {
+        CompletionCallback completion;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            if (pending_transmits_.empty()) {
+                return;
+            }
+            completion = std::move(pending_transmits_.front());
+            pending_transmits_.pop_front();
+        }
+        completion(std::move(result));
+    }
+
+    [[nodiscard]] std::size_t pendingTransmitCount() const {
+        std::lock_guard<std::mutex> lock(mutex_);
+        return pending_transmits_.size();
+    }
+
+protected:
+    void startConnect(const DataSourceConfig&, CompletionCallback completion) override {
+        completion(makeSuccess());
+    }
+
+    void startDisconnect(CompletionCallback completion) override {
+        completion(makeSuccess());
+    }
+
+    void startTransmit(const ObdRequest&, CompletionCallback completion) override {
+        std::lock_guard<std::mutex> lock(mutex_);
+        pending_transmits_.push_back(std::move(completion));
+    }
+
+private:
+    mutable std::mutex mutex_;
+    std::deque<CompletionCallback> pending_transmits_;
+};
+
+template <typename Predicate>
+bool waitFor(Predicate&& predicate) {
+    constexpr auto timeout = std::chrono::seconds{1};
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (!predicate()) {
+        if (std::chrono::steady_clock::now() >= deadline) {
+            return false;
+        }
+        std::this_thread::yield();
+    }
+    return true;
+}
+
 } // namespace
 
 TEST_CASE("DataSourceConfig variants and type reflection", "[data_source_contract]") {
@@ -379,4 +440,119 @@ TEST_CASE("IDataSource subscriber isolation and unsubscription", "[data_source_c
     source.broadcastMessage(msg);
     REQUIRE(msg_count1 == 1);
     REQUIRE(msg_count2 == 2);
+}
+
+TEST_CASE("AsyncDataSource serializes lifecycle and callbacks on its worker", "[data_source_contract]") {
+    ContractDataSource source;
+    const auto caller_thread = std::this_thread::get_id();
+    std::atomic<bool> connected{false};
+    std::thread::id callback_thread;
+    std::mutex callback_mutex;
+
+    source.connect(SyntheticConfig{}, [&](Result<void> result) {
+        REQUIRE(result.has_value());
+        {
+            std::lock_guard<std::mutex> lock(callback_mutex);
+            callback_thread = std::this_thread::get_id();
+        }
+        connected.store(true, std::memory_order_release);
+    });
+
+    REQUIRE(waitFor([&] { return connected.load(std::memory_order_acquire); }));
+    {
+        std::lock_guard<std::mutex> lock(callback_mutex);
+        REQUIRE(callback_thread != caller_thread);
+    }
+    REQUIRE(source.connectionState() == ConnectionState::Ready);
+
+    std::atomic<bool> disconnected{false};
+    source.disconnect([&](Result<void> result) {
+        REQUIRE(result.has_value());
+        disconnected.store(true, std::memory_order_release);
+    });
+    REQUIRE(waitFor([&] { return disconnected.load(std::memory_order_acquire); }));
+    REQUIRE(source.connectionState() == ConnectionState::Disconnected);
+}
+
+TEST_CASE("AsyncDataSource enforces lifecycle cancellation and reconnect", "[data_source_contract]") {
+    ContractDataSource source;
+    SyntheticConfig config{.deterministic_seed = 777};
+    std::atomic<bool> connected{false};
+    source.connect(config, [&](Result<void> result) {
+        REQUIRE(result.has_value());
+        connected.store(true, std::memory_order_release);
+    });
+    REQUIRE(waitFor([&] { return connected.load(std::memory_order_acquire); }));
+
+    std::atomic<bool> cancelled{false};
+    source.transmit(ObdRequest{}, [&](Result<void> result) {
+        REQUIRE_FALSE(result.has_value());
+        REQUIRE(result.error().code == "Core.Cancelled");
+        cancelled.store(true, std::memory_order_release);
+    });
+
+    std::atomic<bool> disconnected{false};
+    source.disconnect([&](Result<void> result) {
+        REQUIRE(result.has_value());
+        disconnected.store(true, std::memory_order_release);
+    });
+    REQUIRE(waitFor([&] { return cancelled.load(std::memory_order_acquire); }));
+    REQUIRE(waitFor([&] { return disconnected.load(std::memory_order_acquire); }));
+
+    std::atomic<int> idempotent_disconnects{0};
+    source.disconnect([&](Result<void> result) {
+        REQUIRE(result.has_value());
+        idempotent_disconnects.fetch_add(1, std::memory_order_release);
+    });
+    REQUIRE(waitFor([&] { return idempotent_disconnects.load(std::memory_order_acquire) == 1; }));
+
+    std::atomic<bool> reconnected{false};
+    source.reconnect([&](Result<void> result) {
+        REQUIRE(result.has_value());
+        reconnected.store(true, std::memory_order_release);
+    });
+    REQUIRE(waitFor([&] { return reconnected.load(std::memory_order_acquire); }));
+    const auto restored_config = source.currentConfig();
+    REQUIRE(restored_config.has_value());
+    REQUIRE(std::get<SyntheticConfig>(*restored_config).deterministic_seed == 777);
+}
+
+TEST_CASE("AsyncDataSource rejects unavailable transmissions and protects subscriptions", "[data_source_contract]") {
+    ContractDataSource source;
+    std::atomic<bool> rejected{false};
+    source.transmit(ObdRequest{}, [&](Result<void> result) {
+        REQUIRE_FALSE(result.has_value());
+        REQUIRE(result.error().code == "Transport.NotConnected");
+        rejected.store(true, std::memory_order_release);
+    });
+    REQUIRE(waitFor([&] { return rejected.load(std::memory_order_acquire); }));
+
+    std::atomic<int> message_count{0};
+    auto token = source.subscribe([&](const ObdMessage&) {
+        message_count.fetch_add(1, std::memory_order_release);
+    }, nullptr);
+    token.reset();
+    source.emit(ObdMessage::create(DataSourceType::Synthetic, EcuAddress{0x7E8}, std::array<std::uint8_t, 2>{0x41, 0x0C}).value());
+    REQUIRE(waitFor([] { return true; }));
+    std::this_thread::sleep_for(std::chrono::milliseconds{10});
+    REQUIRE(message_count.load(std::memory_order_acquire) == 0);
+}
+
+TEST_CASE("AsyncDataSource cancels pending work during destruction", "[data_source_contract]") {
+    std::atomic<bool> connected{false};
+    std::atomic<bool> cancelled{false};
+    auto source = std::make_unique<ContractDataSource>();
+    source->connect(SyntheticConfig{}, [&](Result<void> result) {
+        REQUIRE(result.has_value());
+        connected.store(true, std::memory_order_release);
+    });
+    REQUIRE(waitFor([&] { return connected.load(std::memory_order_acquire); }));
+    source->transmit(ObdRequest{}, [&](Result<void> result) {
+        REQUIRE_FALSE(result.has_value());
+        REQUIRE(result.error().code == "Core.Cancelled");
+        cancelled.store(true, std::memory_order_release);
+    });
+    REQUIRE(waitFor([&] { return source->pendingTransmitCount() == 1; }));
+    source.reset();
+    REQUIRE(cancelled.load(std::memory_order_acquire));
 }

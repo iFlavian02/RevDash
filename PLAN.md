@@ -286,7 +286,7 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [x] `cmake/Dependencies.cmake`
 * [ ] `cmake/Packaging.cmake`
 * [x] `headers/revdash/core/*.hpp`
-* [ ] `src/core/*.cpp`
+* [x] `src/core/*.cpp`
 * [ ] `headers/revdash/protocol/*.hpp`
 * [ ] `src/protocol/*.cpp`
 * [ ] `headers/revdash/drivers/*.hpp`
@@ -481,20 +481,20 @@ ctest --preset windows-msvc-debug -R core_types --output-on-failure
   * transmit;
   * connection state;
   * canonical message subscription.
-* [ ] Lifecycle calls must not block the caller on device I/O.
-* [ ] Source transport work occurs on a source-owned serialized worker/executor.
-* [ ] Source completion/message callbacks execute on the source worker unless explicitly marshalled elsewhere.
+* [x] Lifecycle calls must not block the caller on device I/O.
+* [x] Source transport work occurs on a source-owned serialized worker/executor.
+* [x] Source completion/message callbacks execute on the source worker unless explicitly marshalled elsewhere.
 * [x] Define `DataSourceConfig` variant for:
 
   * Serial;
   * Synthetic;
   * Playback;
   * SocketCAN.
-* [ ] Disconnect is idempotent.
-* [ ] In-flight operations terminate with `Core.Cancelled` during intentional shutdown/source replacement.
-* [ ] Preserve connection configuration required for reconnect.
-* [ ] Add move-only RAII subscription token with thread-safe unregistration.
-* [ ] Reject new transmissions when source state does not permit them.
+* [x] Disconnect is idempotent.
+* [x] In-flight operations terminate with `Core.Cancelled` during intentional shutdown/source replacement.
+* [x] Preserve connection configuration required for reconnect.
+* [x] Add move-only RAII subscription token with thread-safe unregistration.
+* [x] Reject new transmissions when source state does not permit them.
 
 ### Tests
 
