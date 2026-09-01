@@ -8,11 +8,9 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(CLI11 CONFIG REQUIRED)
 find_package(Catch2 3 CONFIG REQUIRED)
 
-# Optional Qt6 resolution for revdash_app
-find_package(Qt6 COMPONENTS Core Quick Graphs QUIET)
-if(NOT Qt6_FOUND)
-    find_package(Qt6 COMPONENTS Core Quick QUIET)
-endif()
+# Qt is intentionally installed separately and located through Qt6_ROOT.
+# Qt Graphs is excluded because its licensing does not fit the default project policy.
+find_package(Qt6 6.11.2 COMPONENTS Core Gui Qml Quick QUIET)
 
 if(Qt6_FOUND)
     message(STATUS "Qt6 found: ${Qt6_VERSION} at ${Qt6_DIR}")

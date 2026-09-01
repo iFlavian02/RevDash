@@ -4,6 +4,11 @@ cmake-build-*/
 out/
 bin/
 lib/
+package/
+packages/
+staging/
+*.msi
+*.wixpdb
 
 # vcpkg
 vcpkg_installed/
@@ -41,6 +46,7 @@ Testing/
 !tests/fixtures/*.jsonl
 !tests/fixtures/*.csv
 !schemas/*.json
+sessions/
 
 # DTC raw licensed datasets (keep generated sqlite and fixtures)
 assets/dtc/*.csv

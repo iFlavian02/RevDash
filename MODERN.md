@@ -1,33 +1,28 @@
-# Tech Stack, Standards & Dependencies (MODERN.md)
+# RevDash Technology Policy
 
-## 1. Core Toolchain & Standards
-- **C++ Standard:** C++20 (`/std:c++20` on MSVC, `-std=c++20` on GCC/Clang).
-- **Compilers:** MSVC 2022 x64 (v143 / v144 / MSVC 18+), Windows 11 SDK.
-- **Build System:** CMake 3.28+ with `CMakePresets.json`.
-- **Package Manager:** `vcpkg` manifest mode (`vcpkg.json`).
-- **GUI Framework:** Qt 6.x (Qt Quick, QML, Qt Graphs 2D) located via `Qt6_ROOT` or `CMAKE_PREFIX_PATH`.
+## Toolchain
 
-## 2. Dependencies & Usage Guidelines
-| Library | Purpose | Dependency Rule |
-| :--- | :--- | :--- |
-| `boost-asio` | Asynchronous I/O and cross-platform serial transport | Pinned in `vcpkg.json`, used in I/O worker |
-| `boost-lockfree` | Lock-free queue concepts & utilities | Pinned in `vcpkg.json` |
-| `tl-expected` | `tl::expected<T, Error>` for modern zero-overhead error handling | Core result types |
-| `nlohmann-json` | JSON schema parsing and session header serialization | Session schema & CLI I/O |
-| `sqlite3` | Local embedded read-only DTC query database | Used in `revdash_core` & `revdash_dtc_importer` |
-| `spdlog` | Fast structured logging | Logging in core and CLI |
-| `cli11` | Command-line option parsing | Headless `revdash_cli` |
-| `catch2` (v3) | Modern C++ test framework | All unit and integration test targets |
+- RevDash uses C++20 with CMake 3.30 or later.
+- Windows v1 is built with MSVC 2022 x64 and dynamically linked runtime dependencies.
+- vcpkg manifest mode is required. The builtin registry baseline in `vcpkg-configuration.json` is pinned; dependency changes must update that baseline deliberately.
+- Windows presets are `windows-msvc`, `windows-msvc-debug`, `windows-msvc-release`, and `windows-msvc-asan`. Linux presets are deferred to Stage 10.
 
-## 3. Best Practices & Code Invariants
-1. **Memory & Concurrency Safety:**
-   - The telemetry hot path MUST perform zero heap allocations after startup. Use fixed-capacity ring buffers (`SpscRing`) and pre-allocated buffers.
-   - Core domain models use standard value types (`std::string_view`, fixed byte arrays, `std::span`).
-2. **Error Handling:**
-   - Functions that can fail return `Result<T>` (`tl::expected<T, Error>`).
-   - Exceptions are not used for normal control flow in the core telemetry pipeline.
-3. **Compiler Warnings & Quality:**
-   - MSVC: `/W4`, `/WX` (warnings as errors), `/permissive-`, `/Zc:__cplusplus`, `/utf-8`.
-   - Sanitizers: Support `/fsanitize=address` on debug builds.
-4. **Architectural Isolation:**
-   - `revdash_core` MUST NOT link or include Qt headers. All Qt dependencies are restricted to `revdash_app` (`src/app/adapters/` and `qml/`).
+## Qt
+
+- Windows v1 targets Qt 6.11.2. Qt is installed separately and discovered through `Qt6_ROOT`.
+- UI code may use Qt Core, Gui, Qml, and Quick under the LGPL-compatible licensing path.
+- Do not add Qt Graphs, Qt Canvas Painter, or another GPL-only Qt module unless the project license changes compatibly or commercial Qt licensing is adopted.
+- `revdash_core` must not include or link Qt. Qt/QML belongs only to the desktop presentation layer.
+
+## C++ and quality practices
+
+- Use `tl::expected<T, Error>` for expected operational failures; do not use exceptions for normal telemetry-pipeline control flow.
+- Build RevDash-owned targets with strict warnings: `/W4`, `/WX`, `/permissive-`, `/Zc:__cplusplus`, and UTF-8 source handling on MSVC.
+- Windows AddressSanitizer is enabled only through the dedicated `windows-msvc-asan` preset. Linux ASan/UBSan and optional TSan policy will be added with the Linux stage.
+- Use Boost.Asio for asynchronous transports and Boost.Lockfree only behind a project-owned bounded queue wrapper. Correct coherent snapshots take priority over speculative lock-free telemetry storage.
+
+## Dependency policy
+
+- The manifest contains Boost.Asio/Lockfree, tl-expected, nlohmann-json, SQLite3, spdlog, CLI11, and Catch2.
+- Add or upgrade dependencies only for a concrete requirement after checking current primary documentation and compatibility with this policy.
+- Keep licensed production DTC data out of source control unless its license explicitly permits redistribution; fixtures remain clearly non-production.

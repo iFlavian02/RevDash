@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 3.30)
 
 # Automatically locate and use the vcpkg toolchain if not explicitly passed by the IDE
 if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
@@ -15,6 +15,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+option(REVDASH_ENABLE_ASAN "Enable AddressSanitizer for supported compilers" OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -41,6 +43,13 @@ target_link_libraries(revdash_core
         unofficial::sqlite3::sqlite3
         spdlog::spdlog
 )
+
+get_target_property(revdash_core_link_libraries revdash_core LINK_LIBRARIES)
+foreach(revdash_core_dependency IN LISTS revdash_core_link_libraries)
+    if(revdash_core_dependency MATCHES "^Qt[0-9]*::")
+        message(FATAL_ERROR "revdash_core must remain independent of Qt")
+    endif()
+endforeach()
 
 revdash_apply_compiler_options(revdash_core)
 
@@ -92,9 +101,6 @@ if(Qt6_FOUND)
             Qt6::Quick
             spdlog::spdlog
     )
-    if(TARGET Qt6::Graphs)
-        target_link_libraries(revdash_app PRIVATE Qt6::Graphs)
-    endif()
     target_compile_definitions(revdash_app PRIVATE REVDASH_HAS_QT=1)
 else()
     target_link_libraries(revdash_app
@@ -126,3 +132,17 @@ revdash_apply_compiler_options(revdash_unit_tests)
 
 add_test(NAME core_types COMMAND revdash_unit_tests "[core_types]")
 add_test(NAME data_source_contract COMMAND revdash_unit_tests "[data_source_contract]")
+
+add_executable(revdash_integration_tests
+    tests/integration/test_main.cpp
+)
+
+target_link_libraries(revdash_integration_tests
+    PRIVATE
+        revdash_core
+        Catch2::Catch2WithMain
+)
+
+revdash_apply_compiler_options(revdash_integration_tests)
+
+add_test(NAME integration_harness COMMAND revdash_integration_tests)

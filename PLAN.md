@@ -274,16 +274,16 @@ Do not modify:
 
 Directory/glob entries authorize files created inside the listed path family when required by the corresponding plan Step.
 
-* [ ] `PLAN.md` — update execution state during implementation
+* [x] `PLAN.md` — update execution state during implementation
 * [ ] `APP.md` — create once durable system architecture exists; maintain institutional system knowledge
-* [ ] `MODERN.md` — create once toolchain/technology choices are concrete; maintain technology policy
-* [ ] `CMakeLists.txt` — replace placeholder target with modular project targets
-* [ ] `CMakePresets.json` — Windows and later Linux configure/build/test/sanitizer presets
-* [ ] `vcpkg.json`
-* [ ] `vcpkg-configuration.json`
-* [ ] `.gitignore`
-* [ ] `cmake/CompilerOptions.cmake`
-* [ ] `cmake/Dependencies.cmake`
+* [x] `MODERN.md` — create once toolchain/technology choices are concrete; maintain technology policy
+* [x] `CMakeLists.txt` — replace placeholder target with modular project targets
+* [x] `CMakePresets.json` — Windows and later Linux configure/build/test/sanitizer presets
+* [x] `vcpkg.json`
+* [x] `vcpkg-configuration.json`
+* [x] `.gitignore`
+* [x] `cmake/CompilerOptions.cmake`
+* [x] `cmake/Dependencies.cmake`
 * [ ] `cmake/Packaging.cmake`
 * [ ] `headers/revdash/core/*.hpp`
 * [ ] `src/core/*.cpp`
@@ -312,8 +312,8 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [ ] `assets/dtc/*`
 * [ ] `assets/licenses/*`
 * [ ] `assets/icons/*`
-* [ ] `tests/unit/*`
-* [ ] `tests/integration/*`
+* [x] `tests/unit/*`
+* [x] `tests/integration/*`
 * [ ] `tests/fixtures/*`
 * [ ] `tests/ui/*`
 * [ ] `tests/hardware/*`
@@ -335,9 +335,9 @@ Directory/glob entries authorize files created inside the listed path family whe
 
 ## Step 1.1: Establish reproducible targets, dependencies, and project policy
 
-* [ ] Replace placeholder CMake configuration with C++20 project structure.
-* [ ] Set CMake minimum to 3.30.
-* [ ] Define:
+* [x] Replace placeholder CMake configuration with C++20 project structure.
+* [x] Set CMake minimum to 3.30.
+* [x] Define:
 
   * `revdash_core`;
   * `revdash_cli`;
@@ -346,14 +346,14 @@ Directory/glob entries authorize files created inside the listed path family whe
   * `revdash_unit_tests`;
   * `revdash_integration_tests`;
   * later `revdash_ui_tests`.
-* [ ] Add Windows presets:
+* [x] Add Windows presets:
 
   * `windows-msvc`;
   * `windows-msvc-debug`;
   * `windows-msvc-release`;
   * `windows-msvc-asan`.
-* [ ] Reserve Linux presets for Stage 10.
-* [ ] Create pinned vcpkg manifest containing:
+* [x] Reserve Linux presets for Stage 10.
+* [x] Create pinned vcpkg manifest containing:
 
   * Boost.Asio;
   * Boost.Lockfree;
@@ -363,13 +363,13 @@ Directory/glob entries authorize files created inside the listed path family whe
   * spdlog;
   * CLI11;
   * Catch2.
-* [ ] Locate Qt separately through `Qt6_ROOT`.
-* [ ] Enforce that `revdash_core` cannot link against Qt.
-* [ ] Enable MSVC `/W4`, standards conformance, and warnings-as-errors for RevDash targets.
-* [ ] Configure Windows AddressSanitizer as a separate supported preset.
-* [ ] Scaffold CTest/Catch2 discovery.
-* [ ] Create `.gitignore` rules for build output, generated package staging, development sessions, and licensed raw datasets.
-* [ ] Create `MODERN.md` with the actual adopted toolchain, dependency baseline, Qt licensing boundary, sanitizer policy, and dependency-selection rules.
+* [x] Locate Qt separately through `Qt6_ROOT`.
+* [x] Enforce that `revdash_core` cannot link against Qt.
+* [x] Enable MSVC `/W4`, standards conformance, and warnings-as-errors for RevDash targets.
+* [x] Configure Windows AddressSanitizer as a separate supported preset.
+* [x] Scaffold CTest/Catch2 discovery.
+* [x] Create `.gitignore` rules for build output, generated package staging, development sessions, and licensed raw datasets.
+* [x] Create `MODERN.md` with the actual adopted toolchain, dependency baseline, Qt licensing boundary, sanitizer policy, and dependency-selection rules.
 
 ### Tests
 
@@ -392,15 +392,15 @@ ctest --preset windows-msvc-debug -N
 ## Step 1.2: Define canonical domain models and time contracts
 
 * [ ] Define `ErrorDomain`, `Error`, and stable application error codes.
-* [ ] Define `Result<T>` using `tl::expected<T, Error>`.
-* [ ] Error values contain:
+* [x] Define `Result<T>` using `tl::expected<T, Error>`.
+* [x] Error values contain:
 
   * stable code;
   * domain;
   * user-safe message;
   * optional diagnostic context;
   * retryable flag.
-* [ ] Define `ConnectionState`:
+* [x] Define `ConnectionState`:
 
   * `Disconnected`;
   * `Connecting`;
@@ -421,8 +421,8 @@ ctest --preset windows-msvc-debug -N
   * monotonic timestamp;
   * optional UTC timestamp;
   * logical payload length.
-* [ ] Enforce application-level transport payload ceiling of 4095 bytes with `Protocol.PayloadTooLarge`.
-* [ ] Define:
+* [x] Enforce application-level transport payload ceiling of 4095 bytes with `Protocol.PayloadTooLarge`.
+* [x] Define:
 
   * `MetricId`;
   * `TelemetrySample`;
@@ -433,7 +433,7 @@ ctest --preset windows-msvc-debug -N
   * `DiagnosticFinding`;
   * `Severity`;
   * `TelemetrySnapshot`.
-* [ ] Initial metric catalog includes:
+* [x] Initial metric catalog includes:
 
   * RPM;
   * speed;
@@ -472,8 +472,8 @@ ctest --preset windows-msvc-debug -R core_types --output-on-failure
 
 ## Step 1.3: Define asynchronous `IDataSource` contract
 
-* [ ] Define pure virtual `IDataSource`.
-* [ ] Contract covers:
+* [x] Define pure virtual `IDataSource`.
+* [x] Contract covers:
 
   * connect;
   * disconnect;
@@ -484,7 +484,7 @@ ctest --preset windows-msvc-debug -R core_types --output-on-failure
 * [ ] Lifecycle calls must not block the caller on device I/O.
 * [ ] Source transport work occurs on a source-owned serialized worker/executor.
 * [ ] Source completion/message callbacks execute on the source worker unless explicitly marshalled elsewhere.
-* [ ] Define `DataSourceConfig` variant for:
+* [x] Define `DataSourceConfig` variant for:
 
   * Serial;
   * Synthetic;
