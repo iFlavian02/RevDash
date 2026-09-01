@@ -109,9 +109,9 @@ struct TelemetrySample {
     double value{0.0};
     SampleQuality quality{SampleQuality::Unsupported};
     MonotonicTimePoint monotonic_ts{MonotonicClock::now()};
-    UtcTimePoint utc_ts{SystemClock::now()};
+    std::optional<UtcTimePoint> utc_ts{SystemClock::now()};
     std::uint64_t sequence_number{0};
-    std::optional<std::uint32_t> ecu_address{std::nullopt};
+    std::optional<EcuAddress> ecu_address{std::nullopt};
 
     [[nodiscard]] bool isValid() const noexcept {
         return quality == SampleQuality::Valid;
@@ -120,7 +120,7 @@ struct TelemetrySample {
 
 struct TelemetrySnapshot {
     MonotonicTimePoint snapshot_monotonic_ts{MonotonicClock::now()};
-    UtcTimePoint snapshot_utc_ts{SystemClock::now()};
+    std::optional<UtcTimePoint> snapshot_utc_ts{SystemClock::now()};
     std::uint64_t epoch{0};
     std::array<TelemetrySample, kMetricCount> samples{};
 

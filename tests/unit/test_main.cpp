@@ -1,4 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
+#include <chrono>
+#include <unordered_set>
 #include <vector>
 #include "revdash/core/error.hpp"
 #include "revdash/core/types.hpp"
@@ -46,6 +48,23 @@ TEST_CASE("Error and Result domain models", "[core_types]") {
         REQUIRE(toString(ErrorDomain::Session) == "Session");
         REQUIRE(toString(ErrorDomain::Storage) == "Storage");
     }
+
+    SECTION("Stable ErrorCode mappings retain their domain-qualified values") {
+        REQUIRE(errorDomain(ErrorCode::CoreCancelled) == ErrorDomain::Core);
+        REQUIRE(toString(ErrorCode::CoreCancelled) == "Core.Cancelled");
+        REQUIRE(errorDomain(ErrorCode::TransportTimeout) == ErrorDomain::Transport);
+        REQUIRE(toString(ErrorCode::TransportTimeout) == "Transport.Timeout");
+        REQUIRE(errorDomain(ErrorCode::ProtocolPayloadTooLarge) == ErrorDomain::Protocol);
+        REQUIRE(toString(ErrorCode::ProtocolPayloadTooLarge) == "Protocol.PayloadTooLarge");
+        REQUIRE(errorDomain(ErrorCode::DiagnosticsUnsupported) == ErrorDomain::Diagnostics);
+        REQUIRE(errorDomain(ErrorCode::SessionInvalidFormat) == ErrorDomain::Session);
+        REQUIRE(errorDomain(ErrorCode::StorageUnavailable) == ErrorDomain::Storage);
+
+        Result<void> result = makeError(ErrorCode::CoreUnsupportedPlatform, "SocketCAN is unavailable");
+        REQUIRE_FALSE(result.has_value());
+        REQUIRE(result.error().code == "Core.UnsupportedPlatform");
+        REQUIRE(result.error().domain == ErrorDomain::Core);
+    }
 }
 
 TEST_CASE("ConnectionState lifecycle and transitions", "[core_types]") {
@@ -86,9 +105,22 @@ TEST_CASE("RawTransportFrame and ObdRequest models", "[core_types]") {
         REQUIRE(req.mode == 0x01);
         REQUIRE(req.pid == 0x0C);
         REQUIRE(req.target_ecu.has_value());
-        REQUIRE(*req.target_ecu == 0x7E0);
+        REQUIRE(*req.target_ecu == EcuAddress{0x7E0});
         REQUIRE(req.extra_payload().empty());
     }
+}
+
+TEST_CASE("EcuAddress preserves format and supports hashing", "[core_types]") {
+    const EcuAddress can11{0x7E8, EcuAddressFormat::Can11Bit};
+    const EcuAddress same_can11{0x7E8, EcuAddressFormat::Can11Bit};
+    const EcuAddress can29{0x7E8, EcuAddressFormat::Can29Bit};
+
+    REQUIRE(can11 == same_can11);
+    REQUIRE_FALSE(can11 == can29);
+    REQUIRE(EcuAddressHash{}(can11) == EcuAddressHash{}(same_can11));
+
+    std::unordered_set<EcuAddress> addresses{can11, same_can11, can29};
+    REQUIRE(addresses.size() == 2);
 }
 
 TEST_CASE("ObdMessage capacity and 4095-byte payload limits", "[core_types]") {
@@ -186,6 +218,22 @@ TEST_CASE("Telemetry domain metrics, canonical units, and quality", "[core_types
         REQUIRE(toString(SampleQuality::Unsupported) == "Unsupported");
         REQUIRE(toString(SampleQuality::Dropped) == "Dropped");
         REQUIRE(toString(SampleQuality::Invalid) == "Invalid");
+
+        TelemetrySample sample{.metric_id = MetricId::Rpm, .quality = SampleQuality::Unsupported};
+        REQUIRE_FALSE(sample.isValid());
+        sample.quality = SampleQuality::Valid;
+        REQUIRE(sample.isValid());
+        sample.quality = SampleQuality::Stale;
+        REQUIRE_FALSE(sample.isValid());
+    }
+
+    SECTION("Metric identifiers are unique") {
+        std::unordered_set<std::string_view> metric_names;
+        for (std::size_t index = 0; index < kMetricCount; ++index) {
+            const auto metric = static_cast<MetricId>(index);
+            REQUIRE(metric_names.insert(toString(metric)).second);
+            REQUIRE_FALSE(getCanonicalUnit(metric).empty());
+        }
     }
 
     SECTION("TelemetrySample validation helper") {
@@ -203,6 +251,52 @@ TEST_CASE("Telemetry domain metrics, canonical units, and quality", "[core_types
         };
         REQUIRE_FALSE(s2.isValid());
     }
+}
+
+TEST_CASE("Canonical messages preserve timestamp semantics", "[core_types]") {
+    const auto monotonic_time = MonotonicTimePoint{std::chrono::seconds{42}};
+    const auto utc_time = UtcTimePoint{std::chrono::seconds{1'700'000'000}};
+    const std::array<std::uint8_t, 2> bytes{0x41, 0x0C};
+
+    const auto timestamped = ObdMessage::create(
+        DataSourceType::Synthetic,
+        EcuAddress{0x7E8},
+        bytes,
+        7,
+        monotonic_time,
+        utc_time
+    );
+    REQUIRE(timestamped.has_value());
+    REQUIRE(timestamped->monotonic_ts == monotonic_time);
+    REQUIRE(timestamped->utc_ts == utc_time);
+    REQUIRE(timestamped->ecu_address == EcuAddress{0x7E8});
+    REQUIRE(timestamped->length == bytes.size());
+
+    const auto without_utc = ObdMessage::create(
+        DataSourceType::Playback,
+        std::nullopt,
+        bytes,
+        8,
+        monotonic_time,
+        std::nullopt
+    );
+    REQUIRE(without_utc.has_value());
+    REQUIRE_FALSE(without_utc->utc_ts.has_value());
+}
+
+TEST_CASE("ManualClock advances deterministically", "[core_types]") {
+    const auto monotonic_start = MonotonicTimePoint{std::chrono::milliseconds{500}};
+    const auto utc_start = UtcTimePoint{std::chrono::seconds{1'700'000'000}};
+    ManualClock clock{monotonic_start, utc_start};
+
+    clock.advance(std::chrono::milliseconds{250});
+    REQUIRE(clock.monotonicNow() == monotonic_start + std::chrono::milliseconds{250});
+    REQUIRE(clock.utcNow() == utc_start + std::chrono::milliseconds{250});
+
+    clock.setUtcTime(std::nullopt);
+    REQUIRE_FALSE(clock.utcNow().has_value());
+    clock.advance(std::chrono::seconds{1});
+    REQUIRE(clock.monotonicNow() == monotonic_start + std::chrono::milliseconds{1250});
 }
 
 TEST_CASE("TelemetrySnapshot immutable store and queries", "[core_types]") {

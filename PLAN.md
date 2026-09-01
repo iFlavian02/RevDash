@@ -285,7 +285,7 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [x] `cmake/CompilerOptions.cmake`
 * [x] `cmake/Dependencies.cmake`
 * [ ] `cmake/Packaging.cmake`
-* [ ] `headers/revdash/core/*.hpp`
+* [x] `headers/revdash/core/*.hpp`
 * [ ] `src/core/*.cpp`
 * [ ] `headers/revdash/protocol/*.hpp`
 * [ ] `src/protocol/*.cpp`
@@ -391,7 +391,7 @@ ctest --preset windows-msvc-debug -N
 
 ## Step 1.2: Define canonical domain models and time contracts
 
-* [ ] Define `ErrorDomain`, `Error`, and stable application error codes.
+* [x] Define `ErrorDomain`, `Error`, and stable application error codes.
 * [x] Define `Result<T>` using `tl::expected<T, Error>`.
 * [x] Error values contain:
 
@@ -409,13 +409,13 @@ ctest --preset windows-msvc-debug -N
   * `Reconnecting`;
   * `Disconnecting`;
   * `Faulted`.
-* [ ] Define fixed-capacity canonical:
+* [x] Define fixed-capacity canonical:
 
   * `ObdRequest`;
   * `ObdMessage`;
   * `RawTransportFrame`;
   * `EcuAddress`.
-* [ ] Preserve:
+* [x] Preserve:
 
   * source/ECU identity;
   * monotonic timestamp;
@@ -448,7 +448,7 @@ ctest --preset windows-msvc-debug -N
   * fuel level;
   * control-module voltage;
   * supported O2 channels.
-* [ ] Add monotonic/system clock abstraction and deterministic manual clock for tests where needed.
+* [x] Add monotonic/system clock abstraction and deterministic manual clock for tests where needed.
 
 ### Tests
 

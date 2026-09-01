@@ -52,7 +52,7 @@ struct DtcRecord {
     Severity severity{Severity::Warning};
     std::string description;
     std::vector<std::string> likely_failure_points{};
-    std::optional<std::uint32_t> ecu_address{std::nullopt};
+    std::optional<EcuAddress> ecu_address{std::nullopt};
     std::optional<FreezeFrame> freeze_frame{std::nullopt};
 
     [[nodiscard]] bool operator==(const DtcRecord& other) const noexcept {
@@ -61,7 +61,7 @@ struct DtcRecord {
 };
 
 struct EcuMetadata {
-    std::optional<std::uint32_t> ecu_address{std::nullopt};
+    std::optional<EcuAddress> ecu_address{std::nullopt};
     std::string vin;
     std::vector<std::string> calibration_ids{};
     std::vector<std::string> cvns{};

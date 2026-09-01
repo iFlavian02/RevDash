@@ -15,6 +15,20 @@ enum class ErrorDomain {
     Storage
 };
 
+enum class ErrorCode {
+    CoreCancelled,
+    CoreInvalidState,
+    CoreUnsupportedPlatform,
+    TransportNotConnected,
+    TransportTimeout,
+    ProtocolPayloadTooLarge,
+    ProtocolMalformedResponse,
+    ProtocolNegativeResponse,
+    DiagnosticsUnsupported,
+    SessionInvalidFormat,
+    StorageUnavailable
+};
+
 [[nodiscard]] constexpr std::string_view toString(ErrorDomain domain) noexcept {
     switch (domain) {
         case ErrorDomain::Core: return "Core";
@@ -25,6 +39,40 @@ enum class ErrorDomain {
         case ErrorDomain::Storage: return "Storage";
     }
     return "Unknown";
+}
+
+[[nodiscard]] constexpr ErrorDomain errorDomain(ErrorCode code) noexcept {
+    switch (code) {
+        case ErrorCode::CoreCancelled:
+        case ErrorCode::CoreInvalidState:
+        case ErrorCode::CoreUnsupportedPlatform: return ErrorDomain::Core;
+        case ErrorCode::TransportNotConnected:
+        case ErrorCode::TransportTimeout: return ErrorDomain::Transport;
+        case ErrorCode::ProtocolPayloadTooLarge:
+        case ErrorCode::ProtocolMalformedResponse:
+        case ErrorCode::ProtocolNegativeResponse: return ErrorDomain::Protocol;
+        case ErrorCode::DiagnosticsUnsupported: return ErrorDomain::Diagnostics;
+        case ErrorCode::SessionInvalidFormat: return ErrorDomain::Session;
+        case ErrorCode::StorageUnavailable: return ErrorDomain::Storage;
+    }
+    return ErrorDomain::Core;
+}
+
+[[nodiscard]] constexpr std::string_view toString(ErrorCode code) noexcept {
+    switch (code) {
+        case ErrorCode::CoreCancelled: return "Core.Cancelled";
+        case ErrorCode::CoreInvalidState: return "Core.InvalidState";
+        case ErrorCode::CoreUnsupportedPlatform: return "Core.UnsupportedPlatform";
+        case ErrorCode::TransportNotConnected: return "Transport.NotConnected";
+        case ErrorCode::TransportTimeout: return "Transport.Timeout";
+        case ErrorCode::ProtocolPayloadTooLarge: return "Protocol.PayloadTooLarge";
+        case ErrorCode::ProtocolMalformedResponse: return "Protocol.MalformedResponse";
+        case ErrorCode::ProtocolNegativeResponse: return "Protocol.NegativeResponse";
+        case ErrorCode::DiagnosticsUnsupported: return "Diagnostics.Unsupported";
+        case ErrorCode::SessionInvalidFormat: return "Session.InvalidFormat";
+        case ErrorCode::StorageUnavailable: return "Storage.Unavailable";
+    }
+    return "Core.Unknown";
 }
 
 struct Error {
@@ -62,6 +110,15 @@ inline tl::unexpected<Error> makeError(
         .retryable = retryable,
         .context = std::move(context)
     });
+}
+
+inline tl::unexpected<Error> makeError(
+    ErrorCode code,
+    std::string message,
+    bool retryable = false,
+    std::string context = {}
+) {
+    return makeError(errorDomain(code), std::string{toString(code)}, std::move(message), retryable, std::move(context));
 }
 
 } // namespace revdash::core
