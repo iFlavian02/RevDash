@@ -72,3 +72,11 @@ The prompt parser tolerates echoes, CR/LF variation, blank lines, and prompts sp
 ## Live polling scheduler
 
 `AdaptivePidScheduler` only admits PIDs discovered as supported by the active ECU. It serializes ELM work to one in-flight request, favors RPM/speed/throttle, then normal telemetry/O2 channels, then slow metrics. Dispatch uses observed RTT to estimate a safe cadence. Congestion stretches medium and low schedules first; queued diagnostic modes preempt streaming as soon as the active request completes, preventing diagnostic starvation.
+
+## Engine coordination
+
+`EngineService` is the Qt-independent owner of the active source, scheduler, current diagnostic-evaluation primitive (`MetricAggregator`), telemetry store, source-to-engine queue, and recorder handoff queue. It owns a processing `std::jthread` and a separate recorder `std::jthread`; sources retain their own transport workers. Public engine commands are serialized and may be called from UI/CLI threads. Engine completions and event subscribers run on the engine worker, so presentation layers must explicitly marshal them to their own thread.
+
+Source callbacks capture the current engine epoch and enqueue `SourceToEnginePacket` values. A source replacement or simulation reset increments the epoch, drains both queues, resets aggregation, and updates the telemetry snapshot epoch. The engine rejects packets that carry an obsolete epoch before decoding or recording them. Mode 01 responses flow through the table-driven decoder into coherent telemetry snapshots and the aggregation primitive; every accepted canonical source message is also handed to the recorder worker through the bounded recorder queue.
+
+Retryable source faults trigger no more than five automatic reconnects with 0.5 s, 1 s, 2 s, then 5 s delays. Explicit disconnect and source replacement cancel this schedule. The engine exposes serialized boundaries for scan, identification, guarded clear, recording, playback, and simulator control. Scan/identify and synthetic controls are active now; guarded clear, session recording, and playback intentionally report `Diagnostics.Unsupported` until their dedicated Stage 5/6 services are implemented rather than bypassing their future safety and persistence rules.

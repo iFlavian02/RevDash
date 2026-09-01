@@ -287,10 +287,10 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [ ] `cmake/Packaging.cmake`
 * [x] `headers/revdash/core/*.hpp`
 * [x] `src/core/*.cpp`
-* [ ] `headers/revdash/protocol/*.hpp`
-* [ ] `src/protocol/*.cpp`
+* [x] `headers/revdash/protocol/*.hpp`
+* [x] `src/protocol/*.cpp`
 * [x] `headers/revdash/drivers/*.hpp`
-* [ ] `src/drivers/elm327/*.cpp`
+* [x] `src/drivers/elm327/*.cpp`
 * [x] `src/drivers/synthetic/*.cpp`
 * [ ] `src/drivers/playback/*.cpp`
 * [ ] `src/drivers/socketcan/*.cpp` — Stage 10
@@ -965,26 +965,26 @@ ATCAF1
 ATSP0
 ```
 
-* [ ] Wait for reset banner/prompt after `ATZ`.
-* [ ] Preserve headers with `ATH1`.
-* [ ] Keep CAN auto-formatting enabled with `ATCAF1`.
-* [ ] Probe adapter identity/capabilities where useful using safe commands such as `ATI`.
-* [ ] Obtain detected protocol information after successful vehicle communication.
-* [ ] Treat optional unsupported commands from imperfect clones separately from failure of required baseline behavior.
-* [ ] Do not disable headers merely to simplify parsing.
+* [x] Wait for reset banner/prompt after `ATZ`.
+* [x] Preserve headers with `ATH1`.
+* [x] Keep CAN auto-formatting enabled with `ATCAF1`.
+* [x] Probe adapter identity/capabilities where useful using safe commands such as `ATI`.
+* [x] Obtain detected protocol information after successful vehicle communication.
+* [x] Treat optional unsupported commands from imperfect clones separately from failure of required baseline behavior.
+* [x] Do not disable headers merely to simplify parsing.
 
 ### Command Synchronization
 
-* [ ] Single active ELM command.
-* [ ] Parse arbitrary serial chunks.
-* [ ] Handle:
+* [x] Single active ELM command.
+* [x] Parse arbitrary serial chunks.
+* [x] Handle:
 
   * CR/LF;
   * optional echoes;
   * prompt `>`;
   * status lines;
   * blank lines.
-* [ ] Classify:
+* [x] Classify:
 
   * `NO DATA`;
   * `SEARCHING...`;
@@ -993,12 +993,12 @@ ATSP0
   * `STOPPED`;
   * `?`;
   * other known adapter status/error responses.
-* [ ] Use:
+* [x] Use:
 
   * bounded reset timeout;
   * adaptive command timeout;
   * bounded initialization retries.
-* [ ] Track:
+* [x] Track:
 
   * current protocol;
   * adapter identity;
@@ -1010,15 +1010,15 @@ ATSP0
 
 ### OBD Normalization
 
-* [ ] Parse header/address information.
-* [ ] Preserve distinct ECU responses.
-* [ ] Support CAN 11-bit and 29-bit response identifiers.
-* [ ] Handle header forms produced by supported legacy OBD protocols where feasible.
-* [ ] Normalize ELM response data into `ObdMessage`.
-* [ ] Retain diagnostic raw lines for trace/debug events.
-* [ ] When ELM output exposes raw ISO-TP-framed CAN content, receive-side normalization may reuse the raw trace codec.
-* [ ] Never send custom FC frames in normal generic OBD operation.
-* [ ] Implement clean cancellation and transition to reconnect/fault states after hot unplug.
+* [x] Parse header/address information.
+* [x] Preserve distinct ECU responses.
+* [x] Support CAN 11-bit and 29-bit response identifiers.
+* [x] Handle header forms produced by supported legacy OBD protocols where feasible.
+* [x] Normalize ELM response data into `ObdMessage`.
+* [x] Retain diagnostic raw lines for trace/debug events.
+* [x] When ELM output exposes raw ISO-TP-framed CAN content, receive-side normalization may reuse the raw trace codec.
+* [x] Never send custom FC frames in normal generic OBD operation.
+* [x] Implement clean cancellation and transition to reconnect/fault states after hot unplug.
 
 ### Tests
 
@@ -1054,42 +1054,42 @@ ctest --preset windows-msvc-debug -R elm327 --output-on-failure
 
 ## Step 4.3: Implement adaptive PID scheduler [x]
 
-* [ ] Build desired polling tiers rather than assuming fixed adapter throughput.
-* [ ] High priority:
+* [x] Build desired polling tiers rather than assuming fixed adapter throughput.
+* [x] High priority:
 
   * RPM;
   * speed;
   * throttle.
-* [ ] Medium priority:
+* [x] Medium priority:
 
   * MAP;
   * MAF;
   * load;
   * timing;
   * active O2 channels.
-* [ ] Low priority:
+* [x] Low priority:
 
   * coolant;
   * trims;
   * ambient;
   * fuel level;
   * voltage.
-* [ ] Use supported-PID filter before scheduling.
-* [ ] Enforce ELM single-flight request behavior.
-* [ ] Use fair deadline-based ordering inside priority tiers.
-* [ ] Estimate sustainable dispatch budget from measured RTT.
-* [ ] Target maximum useful throughput while keeping estimated adapter/bus utilization below 80%.
-* [ ] Degrade low-priority polling first during congestion.
-* [ ] Degrade medium priority only when required.
-* [ ] Ramp recovery gradually after congestion.
-* [ ] Pause/drain streaming requests for diagnostic operations:
+* [x] Use supported-PID filter before scheduling.
+* [x] Enforce ELM single-flight request behavior.
+* [x] Use fair deadline-based ordering inside priority tiers.
+* [x] Estimate sustainable dispatch budget from measured RTT.
+* [x] Target maximum useful throughput while keeping estimated adapter/bus utilization below 80%.
+* [x] Degrade low-priority polling first during congestion.
+* [x] Degrade medium priority only when required.
+* [x] Ramp recovery gradually after congestion.
+* [x] Pause/drain streaming requests for diagnostic operations:
 
   * 02;
   * 03;
   * 04;
   * 07;
   * 9.
-* [ ] Prevent diagnostic starvation.
+* [x] Prevent diagnostic starvation.
 
 ### Tests
 
@@ -1115,7 +1115,7 @@ ctest --preset windows-msvc-debug -R pid_scheduler --output-on-failure
 
 ## Step 4.4: Assemble `EngineService` and explicit worker ownership
 
-* [ ] `EngineService` owns:
+* [x] `EngineService` owns:
 
   * active source;
   * scheduler;
@@ -1123,18 +1123,18 @@ ctest --preset windows-msvc-debug -R pid_scheduler --output-on-failure
   * telemetry store;
   * diagnostic evaluator;
   * session recorder coordination.
-* [ ] Active source owns its own transport worker/executor.
-* [ ] Engine owns processing `std::jthread`.
-* [ ] Recorder owns recording `std::jthread`.
-* [ ] Source callbacks enqueue canonical packets into source → engine SPSC.
-* [ ] Engine worker:
+* [x] Active source owns its own transport worker/executor.
+* [x] Engine owns processing `std::jthread`.
+* [x] Recorder owns recording `std::jthread`.
+* [x] Source callbacks enqueue canonical packets into source → engine SPSC.
+* [x] Engine worker:
 
   * consumes source messages;
   * decodes;
   * updates telemetry;
   * evaluates rules;
   * dispatches recorder records.
-* [ ] Implement safe UI/CLI → engine command queue for:
+* [x] Implement safe UI/CLI → engine command queue for:
 
   * connect;
   * disconnect;
@@ -1145,22 +1145,22 @@ ctest --preset windows-msvc-debug -R pid_scheduler --output-on-failure
   * recording;
   * playback;
   * simulation controls.
-* [ ] Implement thread-safe event publication.
-* [ ] Implement exponential reconnect:
+* [x] Implement thread-safe event publication.
+* [x] Implement exponential reconnect:
 
   * 0.5s;
   * 1s;
   * 2s;
   * 5s;
   * maximum five automatic attempts.
-* [ ] Increment engine epoch on:
+* [x] Increment engine epoch on:
 
   * source replacement;
   * playback seek;
   * state reset requiring telemetry invalidation.
-* [ ] Drain stale pipeline work during epoch transition.
-* [ ] Reject late responses belonging to an obsolete epoch.
-* [ ] Update `APP.md` with final worker and ownership architecture.
+* [x] Drain stale pipeline work during epoch transition.
+* [x] Reject late responses belonging to an obsolete epoch.
+* [x] Update `APP.md` with final worker and ownership architecture.
 
 ### Tests
 

@@ -13,10 +13,16 @@ struct RecorderPacket {
     ObdMessage message{};
 };
 
+struct SourceToEnginePacket {
+    std::uint64_t engine_epoch{0};
+    ObdMessage message{};
+};
+
 static_assert(std::is_trivially_copyable_v<ObdMessage>);
 static_assert(std::is_trivially_copyable_v<RecorderPacket>);
+static_assert(std::is_trivially_copyable_v<SourceToEnginePacket>);
 
-using SourceToEngineQueue = BoundedSpscQueue<ObdMessage, kSourceToEngineQueueCapacity>;
+using SourceToEngineQueue = BoundedSpscQueue<SourceToEnginePacket, kSourceToEngineQueueCapacity>;
 using EngineToRecorderQueue = BoundedSpscQueue<RecorderPacket, kEngineToRecorderQueueCapacity>;
 
 } // namespace revdash::core
