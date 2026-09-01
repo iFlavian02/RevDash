@@ -26,8 +26,28 @@ enum class MetricId : std::uint16_t {
     ModuleVoltage,
     O2Sensor1Voltage,
     O2Sensor2Voltage,
+    O2Sensor3Voltage,
+    O2Sensor4Voltage,
+    O2Sensor5Voltage,
+    O2Sensor6Voltage,
+    O2Sensor7Voltage,
+    O2Sensor8Voltage,
     O2Sensor1EquivalenceRatio,
     O2Sensor2EquivalenceRatio,
+    O2Sensor3EquivalenceRatio,
+    O2Sensor4EquivalenceRatio,
+    O2Sensor5EquivalenceRatio,
+    O2Sensor6EquivalenceRatio,
+    O2Sensor7EquivalenceRatio,
+    O2Sensor8EquivalenceRatio,
+    O2Sensor1Current,
+    O2Sensor2Current,
+    O2Sensor3Current,
+    O2Sensor4Current,
+    O2Sensor5Current,
+    O2Sensor6Current,
+    O2Sensor7Current,
+    O2Sensor8Current,
     _Count
 };
 
@@ -52,8 +72,28 @@ constexpr std::size_t kMetricCount = static_cast<std::size_t>(MetricId::_Count);
         case MetricId::ModuleVoltage: return "ModuleVoltage";
         case MetricId::O2Sensor1Voltage: return "O2Sensor1Voltage";
         case MetricId::O2Sensor2Voltage: return "O2Sensor2Voltage";
+        case MetricId::O2Sensor3Voltage: return "O2Sensor3Voltage";
+        case MetricId::O2Sensor4Voltage: return "O2Sensor4Voltage";
+        case MetricId::O2Sensor5Voltage: return "O2Sensor5Voltage";
+        case MetricId::O2Sensor6Voltage: return "O2Sensor6Voltage";
+        case MetricId::O2Sensor7Voltage: return "O2Sensor7Voltage";
+        case MetricId::O2Sensor8Voltage: return "O2Sensor8Voltage";
         case MetricId::O2Sensor1EquivalenceRatio: return "O2Sensor1EquivalenceRatio";
         case MetricId::O2Sensor2EquivalenceRatio: return "O2Sensor2EquivalenceRatio";
+        case MetricId::O2Sensor3EquivalenceRatio: return "O2Sensor3EquivalenceRatio";
+        case MetricId::O2Sensor4EquivalenceRatio: return "O2Sensor4EquivalenceRatio";
+        case MetricId::O2Sensor5EquivalenceRatio: return "O2Sensor5EquivalenceRatio";
+        case MetricId::O2Sensor6EquivalenceRatio: return "O2Sensor6EquivalenceRatio";
+        case MetricId::O2Sensor7EquivalenceRatio: return "O2Sensor7EquivalenceRatio";
+        case MetricId::O2Sensor8EquivalenceRatio: return "O2Sensor8EquivalenceRatio";
+        case MetricId::O2Sensor1Current: return "O2Sensor1Current";
+        case MetricId::O2Sensor2Current: return "O2Sensor2Current";
+        case MetricId::O2Sensor3Current: return "O2Sensor3Current";
+        case MetricId::O2Sensor4Current: return "O2Sensor4Current";
+        case MetricId::O2Sensor5Current: return "O2Sensor5Current";
+        case MetricId::O2Sensor6Current: return "O2Sensor6Current";
+        case MetricId::O2Sensor7Current: return "O2Sensor7Current";
+        case MetricId::O2Sensor8Current: return "O2Sensor8Current";
         case MetricId::_Count: return "Unknown";
     }
     return "Unknown";
@@ -77,9 +117,29 @@ constexpr std::size_t kMetricCount = static_cast<std::size_t>(MetricId::_Count);
         case MetricId::FuelLevel: return "%";
         case MetricId::ModuleVoltage: return "V";
         case MetricId::O2Sensor1Voltage:
-        case MetricId::O2Sensor2Voltage: return "V";
+        case MetricId::O2Sensor2Voltage:
+        case MetricId::O2Sensor3Voltage:
+        case MetricId::O2Sensor4Voltage:
+        case MetricId::O2Sensor5Voltage:
+        case MetricId::O2Sensor6Voltage:
+        case MetricId::O2Sensor7Voltage:
+        case MetricId::O2Sensor8Voltage: return "V";
         case MetricId::O2Sensor1EquivalenceRatio:
-        case MetricId::O2Sensor2EquivalenceRatio: return "ratio";
+        case MetricId::O2Sensor2EquivalenceRatio:
+        case MetricId::O2Sensor3EquivalenceRatio:
+        case MetricId::O2Sensor4EquivalenceRatio:
+        case MetricId::O2Sensor5EquivalenceRatio:
+        case MetricId::O2Sensor6EquivalenceRatio:
+        case MetricId::O2Sensor7EquivalenceRatio:
+        case MetricId::O2Sensor8EquivalenceRatio: return "ratio";
+        case MetricId::O2Sensor1Current:
+        case MetricId::O2Sensor2Current:
+        case MetricId::O2Sensor3Current:
+        case MetricId::O2Sensor4Current:
+        case MetricId::O2Sensor5Current:
+        case MetricId::O2Sensor6Current:
+        case MetricId::O2Sensor7Current:
+        case MetricId::O2Sensor8Current: return "A";
         case MetricId::_Count: return "";
     }
     return "";

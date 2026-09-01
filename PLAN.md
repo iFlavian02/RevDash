@@ -565,7 +565,7 @@ ctest --preset windows-msvc-debug -R "spsc|latest_store" --output-on-failure
 
 ## Step 2.1: Build table-driven Mode 01 PID catalog
 
-* [ ] Define descriptor table containing:
+* [x] Define descriptor table containing:
 
   * PID;
   * expected response length;
@@ -574,7 +574,7 @@ ctest --preset windows-msvc-debug -R "spsc|latest_store" --output-on-failure
   * decoder;
   * valid bounds;
   * stale policy.
-* [ ] Decode:
+* [x] Decode:
 
   * RPM;
   * speed;
@@ -588,15 +588,15 @@ ctest --preset windows-msvc-debug -R "spsc|latest_store" --output-on-failure
   * ambient temperature;
   * fuel level;
   * module voltage.
-* [ ] Decode Mode 01 supported-PID bitmaps:
+* [x] Decode Mode 01 supported-PID bitmaps:
 
   * `00`;
   * `20`;
   * `40`;
   * later ranges when supported by catalog.
-* [ ] Build dynamic query filter from supported bitmap results.
-* [ ] Normalize supported narrowband/wideband O2 data into typed metrics without pretending unsupported sensor representations are equivalent.
-* [ ] Reject:
+* [x] Build dynamic query filter from supported bitmap results.
+* [x] Normalize supported narrowband/wideband O2 data into typed metrics without pretending unsupported sensor representations are equivalent.
+* [x] Reject:
 
   * truncated payloads;
   * incorrect service responses;

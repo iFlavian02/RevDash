@@ -35,4 +35,8 @@ Expected failures use `Result<T>` and stable domain-qualified error codes. Opera
 
 ## Current limitations
 
-Stage 1 establishes contracts and concurrency primitives only. No physical adapter, synthetic ECU behavior, protocol decoder, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.
+Stage 2.1 adds a Qt-independent Mode 01 decoder and descriptor catalog. The catalog is the source of truth for each implemented PID's response length, SI unit, scheduling class, value bounds, and stale interval. `decodeMode01Response` consumes canonical logical OBD messages only; it validates the positive service byte and PID echo before decoding, classifies ECU negative responses separately, and preserves message timestamps, sequence, and ECU identity in every telemetry sample.
+
+Supported-PID discovery is intentionally separate from the telemetry query filter. Bitmaps use the SAE high-bit-first ordering for the next 32 PIDs. Discovery begins with 00 and follows 20 then 40 only if advertised, while the query filter schedules only catalogued PIDs advertised by the ECU. Narrowband O2 PIDs publish voltage metrics; wideband PIDs publish equivalence-ratio and sensor-current metrics. These are distinct metric types and must not be converted into each other.
+
+No physical adapter, synthetic ECU behavior, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.
