@@ -275,7 +275,7 @@ Do not modify:
 Directory/glob entries authorize files created inside the listed path family when required by the corresponding plan Step.
 
 * [x] `PLAN.md` — update execution state during implementation
-* [ ] `APP.md` — create once durable system architecture exists; maintain institutional system knowledge
+* [x] `APP.md` — create once durable system architecture exists; maintain institutional system knowledge
 * [x] `MODERN.md` — create once toolchain/technology choices are concrete; maintain technology policy
 * [x] `CMakeLists.txt` — replace placeholder target with modular project targets
 * [x] `CMakePresets.json` — Windows and later Linux configure/build/test/sanitizer presets
@@ -518,21 +518,21 @@ ctest --preset windows-msvc-debug -R data_source_contract --output-on-failure
 
 ## Step 1.4: Implement bounded pipelines and coherent telemetry store
 
-* [ ] Wrap `boost::lockfree::spsc_queue` in project-owned bounded SPSC abstraction.
-* [ ] Configure default capacities:
+* [x] Wrap `boost::lockfree::spsc_queue` in project-owned bounded SPSC abstraction.
+* [x] Configure default capacities:
 
   * 1024 source → engine;
   * 2048 engine → recorder.
-* [ ] Implement non-blocking overflow/drop counters.
-* [ ] Never silently overwrite queue contents.
-* [ ] Define fixed-size/fixed-capacity hot-path packet representations where practical.
-* [ ] Implement coherent latest telemetry store keyed by `MetricId`.
-* [ ] Use synchronization that guarantees value, timestamp, and quality originate from the same update.
-* [ ] Provide efficient complete `TelemetrySnapshot` reads.
-* [ ] Avoid steady-state heap allocation inside SPSC enqueue/dequeue operations.
-* [ ] Instrument store lock contention rather than prematurely replacing correct synchronization with custom lock-free code.
-* [ ] Create initial `APP.md` after these ownership/data-flow contracts are implemented.
-* [ ] Record in `APP.md`:
+* [x] Implement non-blocking overflow/drop counters.
+* [x] Never silently overwrite queue contents.
+* [x] Define fixed-size/fixed-capacity hot-path packet representations where practical.
+* [x] Implement coherent latest telemetry store keyed by `MetricId`.
+* [x] Use synchronization that guarantees value, timestamp, and quality originate from the same update.
+* [x] Provide efficient complete `TelemetrySnapshot` reads.
+* [x] Avoid steady-state heap allocation inside SPSC enqueue/dequeue operations.
+* [x] Instrument store lock contention rather than prematurely replacing correct synchronization with custom lock-free code.
+* [x] Create initial `APP.md` after these ownership/data-flow contracts are implemented.
+* [x] Record in `APP.md`:
 
   * core/UI boundary;
   * source ownership;

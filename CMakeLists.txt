@@ -121,6 +121,7 @@ enable_testing()
 add_executable(revdash_unit_tests
     tests/unit/test_main.cpp
     tests/unit/test_data_source.cpp
+    tests/unit/test_pipeline.cpp
 )
 
 target_link_libraries(revdash_unit_tests
@@ -133,6 +134,8 @@ revdash_apply_compiler_options(revdash_unit_tests)
 
 add_test(NAME core_types COMMAND revdash_unit_tests "[core_types]")
 add_test(NAME data_source_contract COMMAND revdash_unit_tests "[data_source_contract]")
+add_test(NAME spsc_queue COMMAND revdash_unit_tests "[spsc]")
+add_test(NAME latest_store COMMAND revdash_unit_tests "[latest_store]")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp

@@ -1,49 +1,38 @@
-# RevDash Application Blueprint
+# RevDash System Knowledge
 
-## 1. Product Vision
-RevDash is a high-performance, offline desktop OBD-II diagnostics and vehicle telemetry application built for automotive enthusiasts, DIY mechanics, and technicians.
+## Stage 1 architecture
 
-## 2. Core User Flows
-1. **Connect Flow:**
-   - Detect and list local COM ports (USB/Bluetooth SPP).
-   - Alternatively, select a Synthetic Engine Simulation profile or load a recorded session (`.jsonl`).
-   - Initialize the ELM327 protocol and confirm readiness.
-2. **Telemetry Flow:**
-   - Stream live vehicle metrics (RPM, Speed, Throttle, Coolant, MAP, MAF, Trims, Voltage, O2) with dynamic scheduling (high/mid/low tiers).
-   - Display rolling 2D charts and instrument gauges at 20 Hz snapshot polling with zero heap allocations on the hot loop.
-3. **Diagnostics & Fault Management Flow:**
-   - Scan Modes 03 (Confirmed) and 07 (Pending) DTCs.
-   - Extract Mode 02 Freeze Frames.
-   - Run rolling heuristic rules (Vacuum Leak, Catalyst Degradation, Thermostat Stuck, Alternator Fault).
-   - Look up codes offline via embedded SQLite DTC database.
-   - Execute Mode 04 DTC Clear safely (Stationary check $\le 0.5\text{ km/h}$, pre-clear evidence snapshot, 30s confirmation token, post-clear rescan).
-4. **Recording, Playback & Export Flow:**
-   - Record raw OBD and telemetry to versioned microsecond JSON Lines (`.jsonl`).
-   - Replay sessions deterministically with `.ridx` index sidecar (0.5x to 5x speeds).
-   - Export 10 Hz resampled automotive CSV (presets for RevDash, MegaLogViewer, TunerStudio).
+`revdash_core` is a native C++20 library with no Qt dependency. The CLI and future Qt/QML desktop layer are consumers of the core; Qt must not cross into protocol, transport, diagnostics, simulation, session, or scheduling code.
 
-## 3. Architecture & Boundaries
-- **Core Engine (`revdash_core`):** Qt-independent, native C++20. Runs in-process with dedicated worker threads:
-  - `I/O Worker` (`std::jthread`): Async Boost.Asio / serial communications.
-  - `Pipeline Worker` (`std::jthread`): J1979 decoding, ISO-TP reassembly, metric aggregation, diagnostic rules.
-  - `Recorder Worker` (`std::jthread`): Non-blocking buffered JSONL disk writer.
-- **Inter-Thread Communication:** Fixed-capacity lock-free SPSC ring buffers and atomic latest-value telemetry store.
-- **Presentation Layer (`revdash_app` & `revdash_cli`):**
-  - Desktop UI: Qt 6 / QML with 6 dedicated workspaces (`Connect`, `Dashboard`, `Diagnostics`, `Simulator`, `Sessions`, `Settings`).
-  - Headless CLI: CLI11-powered diagnostic tool.
-- **Data Persistence:**
-  - DTC Database: Read-only SQLite (`assets/dtc/revdash_dtc.sqlite`).
-  - Sessions: User-selected folder (`.jsonl`, `.ridx`, `.csv`).
-  - Configuration: `QStandardPaths::AppConfigLocation`.
+The canonical boundary between a source and the engine is `ObdRequest` and `ObdMessage`. Sources retain transport framing internally and publish logical messages with source type, optional ECU identity, monotonic time, optional UTC time, sequence number, and bounded payload length. `EcuAddress` preserves address format as well as its numeric value so future 11-bit and 29-bit CAN traffic cannot be conflated.
 
-## 4. Current Status & Roadmap
-- **Stage 1 (Current):** Build Foundation, Core Contracts & Concurrency Primitives.
-- **Stage 2:** SAE J1979 Protocol & ISO-TP Codecs.
-- **Stage 3:** Synthetic Powertrain & Fault Simulator.
-- **Stage 4:** ELM327 Serial Driver & Engine Service.
-- **Stage 5:** Diagnostics Rules, DTC Database & Guarded Clear.
-- **Stage 6:** Session Recording, Playback & CSV Export.
-- **Stage 7:** Headless CLI & Backend Acceptance.
-- **Stage 8:** Qt 6 / QML Desktop Interface.
-- **Stage 9:** Windows v1 Packaging & Hardware Validation.
-- **Stage 10:** Linux SocketCAN & DEB Packaging.
+## Source lifecycle and worker ownership
+
+`IDataSource` expresses the common lifecycle for Serial ELM327, Synthetic, Playback, and later SocketCAN sources. `AsyncDataSource` is the reusable implementation base: it owns one Boost.Asio executor thread, serializes all lifecycle and transmit work there, and invokes source completions and subscriptions on that worker.
+
+Lifecycle methods return immediately after queuing work. A source rejects transmissions unless it is `Ready`; disconnect is idempotent. Intentional disconnect and destruction cancel tracked work with `Core.Cancelled`. The last successful `DataSourceConfig` is retained for reconnect. A subscription token is move-only and unregisters safely even while messages are being published.
+
+Only one source will be active in the eventual engine. Source replacement is a shutdown boundary: cancel old work, stop accepting old callbacks, then connect the new source. Future source implementations must derive from `AsyncDataSource` or preserve these same ownership and callback guarantees.
+
+## Pipeline and telemetry consistency
+
+Hot paths use project-owned `BoundedSpscQueue` wrappers over `boost::lockfree::spsc_queue`. The wrapper accepts only trivially copyable packets, has compile-time capacity, never overwrites unread data, and rejects the newest packet on overflow while incrementing a drop counter.
+
+The initial topology is:
+
+```text
+active source worker -- ObdMessage / 1024 --> engine worker
+engine worker -- RecorderPacket / 2048 --> recorder worker
+```
+
+`LatestTelemetryStore` is deliberately lock-based rather than custom lock-free. A `std::shared_mutex` protects complete `TelemetrySample` replacement and whole-snapshot reads, so value, timestamp, quality, sequence, and ECU identity always originate from one update. The store records read/write lock contention for future profiling. It is not valid to publish related telemetry fields through independent atomics.
+
+## Time, values, and errors
+
+Scheduling and processing use monotonic time; durable metadata may carry optional UTC time. `ManualClock` makes time-dependent unit tests deterministic. Core values remain SI; conversion is reserved for UI and export stages.
+
+Expected failures use `Result<T>` and stable domain-qualified error codes. Operational errors must be user-safe and may include diagnostic context without exposing sensitive implementation details.
+
+## Current limitations
+
+Stage 1 establishes contracts and concurrency primitives only. No physical adapter, synthetic ECU behavior, protocol decoder, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.
