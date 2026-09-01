@@ -1,6 +1,5 @@
 #include "revdash/core/engine_service.hpp"
 
-#include <algorithm>
 #include <array>
 #include <utility>
 

@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cctype>
-#include <mutex>
 #include <sstream>
 
 namespace revdash::drivers {
