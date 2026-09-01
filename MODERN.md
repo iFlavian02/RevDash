@@ -25,5 +25,6 @@
 ## Dependency policy
 
 - The manifest contains Boost.Asio/Lockfree, tl-expected, nlohmann-json, SQLite3, spdlog, CLI11, and Catch2.
+- SQLite is the versioned offline DTC catalog format. Only `revdash_dtc_importer` creates or migrates these databases; application runtime code opens them read-only and rejects unsupported schemas or a fixture/production identity mismatch.
 - Add or upgrade dependencies only for a concrete requirement after checking current primary documentation and compatibility with this policy.
 - Keep licensed production DTC data out of source control unless its license explicitly permits redistribution; fixtures remain clearly non-production.

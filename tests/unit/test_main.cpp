@@ -56,6 +56,8 @@ TEST_CASE("Error and Result domain models", "[core_types]") {
         REQUIRE(toString(ErrorCode::TransportTimeout) == "Transport.Timeout");
         REQUIRE(errorDomain(ErrorCode::ProtocolPayloadTooLarge) == ErrorDomain::Protocol);
         REQUIRE(toString(ErrorCode::ProtocolPayloadTooLarge) == "Protocol.PayloadTooLarge");
+        REQUIRE(errorDomain(ErrorCode::DiagnosticsDatabaseInvalid) == ErrorDomain::Diagnostics);
+        REQUIRE(toString(ErrorCode::DiagnosticsDatabaseInvalid) == "Diagnostics.DatabaseInvalid");
         REQUIRE(errorDomain(ErrorCode::DiagnosticsUnsupported) == ErrorDomain::Diagnostics);
         REQUIRE(errorDomain(ErrorCode::SessionInvalidFormat) == ErrorDomain::Session);
         REQUIRE(errorDomain(ErrorCode::StorageUnavailable) == ErrorDomain::Storage);

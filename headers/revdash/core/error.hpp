@@ -24,6 +24,7 @@ enum class ErrorCode {
     ProtocolPayloadTooLarge,
     ProtocolMalformedResponse,
     ProtocolNegativeResponse,
+    DiagnosticsDatabaseInvalid,
     DiagnosticsUnsupported,
     SessionInvalidFormat,
     StorageUnavailable
@@ -51,6 +52,7 @@ enum class ErrorCode {
         case ErrorCode::ProtocolPayloadTooLarge:
         case ErrorCode::ProtocolMalformedResponse:
         case ErrorCode::ProtocolNegativeResponse: return ErrorDomain::Protocol;
+        case ErrorCode::DiagnosticsDatabaseInvalid:
         case ErrorCode::DiagnosticsUnsupported: return ErrorDomain::Diagnostics;
         case ErrorCode::SessionInvalidFormat: return ErrorDomain::Session;
         case ErrorCode::StorageUnavailable: return ErrorDomain::Storage;
@@ -68,6 +70,7 @@ enum class ErrorCode {
         case ErrorCode::ProtocolPayloadTooLarge: return "Protocol.PayloadTooLarge";
         case ErrorCode::ProtocolMalformedResponse: return "Protocol.MalformedResponse";
         case ErrorCode::ProtocolNegativeResponse: return "Protocol.NegativeResponse";
+        case ErrorCode::DiagnosticsDatabaseInvalid: return "Diagnostics.DatabaseInvalid";
         case ErrorCode::DiagnosticsUnsupported: return "Diagnostics.Unsupported";
         case ErrorCode::SessionInvalidFormat: return "Session.InvalidFormat";
         case ErrorCode::StorageUnavailable: return "Storage.Unavailable";

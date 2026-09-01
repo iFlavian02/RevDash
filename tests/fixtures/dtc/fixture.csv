@@ -1,0 +1,4 @@
+code,description,severity,likely_failure_points,source_version
+P0171,System Too Lean (Bank 1),Warning,Vacuum leak|Fuel delivery,fixture-2026.1
+P0300,Random/Multiple Cylinder Misfire Detected,Critical,Spark plugs|Ignition coils|Fuel injectors,fixture-2026.1
+U0100,"Lost Communication With ECM/PCM, bus offline",Advisory,CAN wiring|Connector – corrosion,fixture-2026.1

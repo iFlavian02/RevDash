@@ -308,13 +308,13 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [ ] `qml/components/*.qml`
 * [ ] `qml/workspaces/*.qml`
 * [ ] `schemas/session-v1.schema.json`
-* [ ] `tools/dtc_importer/*`
+* [x] `tools/dtc_importer/*`
 * [ ] `assets/dtc/*`
 * [ ] `assets/licenses/*`
 * [ ] `assets/icons/*`
 * [x] `tests/unit/*`
 * [x] `tests/integration/*`
-* [ ] `tests/fixtures/*`
+* [x] `tests/fixtures/*`
 * [ ] `tests/ui/*`
 * [ ] `tests/hardware/*`
 * [ ] `packaging/windows/*`
@@ -1246,14 +1246,14 @@ ctest --preset windows-msvc-debug -R diagnostic_rules --output-on-failure
 
 ## Step 5.2: Build offline DTC database pipeline
 
-* [ ] Define expected external CSV fields:
+* [x] Define expected external CSV fields:
 
   * `code`;
   * `description`;
   * `severity`;
   * `likely_failure_points`;
   * `source_version`.
-* [ ] Validate:
+* [x] Validate:
 
   * DTC format;
   * severity enum;
@@ -1261,20 +1261,20 @@ ctest --preset windows-msvc-debug -R diagnostic_rules --output-on-failure
   * required fields;
   * duplicate/conflicting rows;
   * dataset version.
-* [ ] Generate versioned SQLite database.
-* [ ] Add indices appropriate for code and search.
-* [ ] Implement `revdash_dtc_importer`.
-* [ ] Implement read-only runtime lookup:
+* [x] Generate versioned SQLite database.
+* [x] Add indices appropriate for code and search.
+* [x] Implement `revdash_dtc_importer`.
+* [x] Implement read-only runtime lookup:
 
   * exact code;
   * prefix;
   * normalized keyword search;
   * unknown fallback.
-* [ ] Keep small legal fixture CSV/SQLite under tests.
-* [ ] Do not require production licensed data for unit/integration tests.
-* [ ] Release packaging must require explicitly supplied/generated production database.
-* [ ] Never package the fixture database as production data.
-* [ ] Do not commit production generated DB unless its license explicitly permits this.
+* [x] Keep small legal fixture CSV/SQLite under tests.
+* [x] Do not require production licensed data for unit/integration tests.
+* [x] Release packaging must require explicitly supplied/generated production database.
+* [x] Never package the fixture database as production data.
+* [x] Do not commit production generated DB unless its license explicitly permits this.
 
 ### Tests
 

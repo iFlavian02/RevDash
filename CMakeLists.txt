@@ -17,6 +17,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(REVDASH_ENABLE_ASAN "Enable AddressSanitizer for supported compilers" OFF)
+option(REVDASH_REQUIRE_PRODUCTION_DTC_DATABASE "Require and validate an external production DTC database" OFF)
+set(REVDASH_PRODUCTION_DTC_DATABASE "" CACHE FILEPATH "Externally supplied production DTC SQLite database")
+
+if(REVDASH_REQUIRE_PRODUCTION_DTC_DATABASE AND
+   (REVDASH_PRODUCTION_DTC_DATABASE STREQUAL "" OR NOT EXISTS "${REVDASH_PRODUCTION_DTC_DATABASE}"))
+    message(FATAL_ERROR "REVDASH_REQUIRE_PRODUCTION_DTC_DATABASE requires an existing REVDASH_PRODUCTION_DTC_DATABASE path")
+endif()
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -30,6 +37,7 @@ add_library(revdash_core STATIC
     src/core/async_data_source.cpp
     src/core/engine_service.cpp
     src/core/types.cpp
+    src/diagnostics/dtc_database.cpp
     src/diagnostics/rule_evaluator.cpp
     src/drivers/elm327/serial_transport.cpp
     src/drivers/elm327/elm327.cpp
@@ -100,6 +108,18 @@ target_link_libraries(revdash_dtc_importer
 
 revdash_apply_compiler_options(revdash_dtc_importer)
 
+if(REVDASH_REQUIRE_PRODUCTION_DTC_DATABASE)
+    add_custom_target(revdash_production_dtc_database_gate ALL
+        COMMAND $<TARGET_FILE:revdash_dtc_importer>
+                verify
+                --database "${REVDASH_PRODUCTION_DTC_DATABASE}"
+                --kind production
+        DEPENDS revdash_dtc_importer
+        COMMENT "Validating explicitly supplied production DTC database"
+        VERBATIM
+    )
+endif()
+
 # -----------------------------------------------------------------------------
 # Desktop Qt GUI Application Target
 # -----------------------------------------------------------------------------
@@ -144,6 +164,7 @@ add_executable(revdash_unit_tests
     tests/unit/test_pid_scheduler.cpp
     tests/unit/test_engine_service.cpp
     tests/unit/test_diagnostic_rules.cpp
+    tests/unit/test_dtc_database.cpp
 )
 
 target_link_libraries(revdash_unit_tests
@@ -173,6 +194,7 @@ add_test(NAME elm327 COMMAND revdash_unit_tests "[elm327]")
 add_test(NAME pid_scheduler COMMAND revdash_unit_tests "[pid_scheduler]")
 add_test(NAME engine_pipeline COMMAND revdash_unit_tests "[engine_pipeline]")
 add_test(NAME diagnostic_rules COMMAND revdash_unit_tests "[diagnostic_rules]")
+add_test(NAME dtc_database COMMAND revdash_unit_tests "[dtc_database]")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp
