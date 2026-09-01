@@ -289,9 +289,9 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [x] `src/core/*.cpp`
 * [ ] `headers/revdash/protocol/*.hpp`
 * [ ] `src/protocol/*.cpp`
-* [ ] `headers/revdash/drivers/*.hpp`
+* [x] `headers/revdash/drivers/*.hpp`
 * [ ] `src/drivers/elm327/*.cpp`
-* [ ] `src/drivers/synthetic/*.cpp`
+* [x] `src/drivers/synthetic/*.cpp`
 * [ ] `src/drivers/playback/*.cpp`
 * [ ] `src/drivers/socketcan/*.cpp` — Stage 10
 * [ ] `headers/revdash/telemetry/*.hpp`
@@ -769,7 +769,7 @@ ctest --preset windows-msvc-debug -R metric_aggregator --output-on-failure
 
 ## Step 3.1: Implement deterministic powertrain model
 
-* [ ] Define `SimulationConfig`:
+* [x] Define `SimulationConfig`:
 
   * engine characteristics;
   * vehicle inertia;
@@ -778,20 +778,20 @@ ctest --preset windows-msvc-debug -R metric_aggregator --output-on-failure
   * wheel radius;
   * ambient temperature;
   * deterministic seed.
-* [ ] Use fixed 10 ms physics timestep independent of UI frame rate.
-* [ ] Model torque-balance RPM dynamics.
-* [ ] Add PI idle control.
-* [ ] Add redline limiter.
-* [ ] Model basic drivetrain speed.
-* [ ] Model MAP from throttle/load.
-* [ ] Model MAF from airflow/volumetric efficiency.
-* [ ] Model thermal behavior:
+* [x] Use fixed 10 ms physics timestep independent of UI frame rate.
+* [x] Model torque-balance RPM dynamics.
+* [x] Add PI idle control.
+* [x] Add redline limiter.
+* [x] Model basic drivetrain speed.
+* [x] Model MAP from throttle/load.
+* [x] Model MAF from airflow/volumetric efficiency.
+* [x] Model thermal behavior:
 
   * cold start;
   * combustion heating;
   * thermostat behavior;
   * fan hysteresis.
-* [ ] Maintain deterministic output for identical configuration/input sequence.
+* [x] Maintain deterministic output for identical configuration/input sequence.
 
 ### Tests
 
@@ -815,25 +815,25 @@ ctest --preset windows-msvc-debug -R synthetic_physics --output-on-failure
 
 ## Step 3.2: Add deterministic fault and noise injection
 
-* [ ] Misfire scenario:
+* [x] Misfire scenario:
 
   * torque drop;
   * RPM instability;
   * freeze-frame capture;
   * configurable `P0300`–`P0304`.
-* [ ] Vacuum leak scenario:
+* [x] Vacuum leak scenario:
 
   * positive fuel trims at idle;
   * load-dependent convergence;
   * `P0171`.
-* [ ] Stuck-open thermostat scenario:
+* [x] Stuck-open thermostat scenario:
 
   * slow/failed warmup;
   * `P0128`.
-* [ ] Configurable Gaussian sensor noise.
-* [ ] Configurable packet dropout.
-* [ ] Use deterministic PRNG.
-* [ ] Keep true physical state separate from noisy sensor output.
+* [x] Configurable Gaussian sensor noise.
+* [x] Configurable packet dropout.
+* [x] Use deterministic PRNG.
+* [x] Keep true physical state separate from noisy sensor output.
 
 ### Tests
 
@@ -856,12 +856,12 @@ ctest --preset windows-msvc-debug -R synthetic_faults --output-on-failure
 
 ## Step 3.3: Expose simulation through `IDataSource`
 
-* [ ] Implement `SyntheticDataSource`.
-* [ ] Fulfil asynchronous lifecycle contract.
-* [ ] Simulate configurable latency.
-* [ ] Accept canonical OBD requests.
-* [ ] Produce canonical logical OBD responses.
-* [ ] Support Modes:
+* [x] Implement `SyntheticDataSource`.
+* [x] Fulfil asynchronous lifecycle contract.
+* [x] Simulate configurable latency.
+* [x] Accept canonical OBD requests.
+* [x] Produce canonical logical OBD responses.
+* [x] Support Modes:
 
   * 01;
   * 02;
@@ -869,8 +869,8 @@ ctest --preset windows-msvc-debug -R synthetic_faults --output-on-failure
   * 04;
   * 07;
   * 9.
-* [ ] Maintain virtual ECU identity/state.
-* [ ] Expose safe simulation controls:
+* [x] Maintain virtual ECU identity/state.
+* [x] Expose safe simulation controls:
 
   * start/stop;
   * throttle;

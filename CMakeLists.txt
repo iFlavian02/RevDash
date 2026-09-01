@@ -29,6 +29,7 @@ include(Dependencies)
 add_library(revdash_core STATIC
     src/core/async_data_source.cpp
     src/core/types.cpp
+    src/drivers/synthetic/synthetic.cpp
     src/protocol/diagnostics.cpp
     src/protocol/isotp_trace.cpp
     src/protocol/mode01.cpp
@@ -128,6 +129,7 @@ add_executable(revdash_unit_tests
     tests/unit/test_mode01.cpp
     tests/unit/test_diagnostics.cpp
     tests/unit/test_isotp_trace.cpp
+    tests/unit/test_synthetic.cpp
 )
 
 target_link_libraries(revdash_unit_tests
@@ -149,6 +151,9 @@ add_test(NAME mode02 COMMAND revdash_unit_tests "[mode02]")
 add_test(NAME mode04 COMMAND revdash_unit_tests "[mode04]")
 add_test(NAME mode09 COMMAND revdash_unit_tests "[mode09]")
 add_test(NAME isotp_trace COMMAND revdash_unit_tests "[isotp_trace]")
+add_test(NAME synthetic_physics COMMAND revdash_unit_tests "[synthetic_physics]")
+add_test(NAME synthetic_faults COMMAND revdash_unit_tests "[synthetic_faults]")
+add_test(NAME synthetic_source COMMAND revdash_unit_tests "[synthetic_source]")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp

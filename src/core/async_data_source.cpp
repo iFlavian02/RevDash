@@ -1,5 +1,6 @@
 #include "revdash/core/async_data_source.hpp"
 
+#include <algorithm>
 #include <atomic>
 #include <future>
 #include <thread>
@@ -40,6 +41,20 @@ public:
     boost::asio::io_context io_context;
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_guard;
     std::jthread worker;
+
+    void cancelDelayedOperations() {
+        std::vector<std::shared_ptr<boost::asio::steady_timer>> timers_to_cancel;
+        {
+            std::lock_guard<std::mutex> lock(timer_mutex);
+            timers_to_cancel.swap(delayed_timers);
+        }
+        for (const auto& timer : timers_to_cancel) {
+            timer->cancel();
+        }
+    }
+
+    std::mutex timer_mutex;
+    std::vector<std::shared_ptr<boost::asio::steady_timer>> delayed_timers;
 };
 
 namespace {
@@ -78,6 +93,7 @@ AsyncDataSource::AsyncDataSource(DataSourceType type)
 
 AsyncDataSource::~AsyncDataSource() {
     state_->stopping.store(true, std::memory_order_release);
+    impl_->cancelDelayedOperations();
 
     std::promise<void> shutdown_complete;
     auto shutdown_ready = shutdown_complete.get_future();
@@ -116,6 +132,30 @@ std::optional<DataSourceConfig> AsyncDataSource::currentConfig() const noexcept 
 
 void AsyncDataSource::postToWorker(std::function<void()> operation) {
     boost::asio::post(impl_->io_context, std::move(operation));
+}
+
+void AsyncDataSource::postAfterToWorker(std::chrono::milliseconds delay, std::function<void()> operation) {
+    if (delay <= std::chrono::milliseconds::zero()) {
+        postToWorker(std::move(operation));
+        return;
+    }
+    auto timer = std::make_shared<boost::asio::steady_timer>(impl_->io_context, delay);
+    {
+        std::lock_guard<std::mutex> lock(impl_->timer_mutex);
+        impl_->delayed_timers.push_back(timer);
+    }
+    timer->async_wait([this, timer, operation = std::move(operation)](const boost::system::error_code& error) mutable {
+        {
+            std::lock_guard<std::mutex> lock(impl_->timer_mutex);
+            const auto found = std::find(impl_->delayed_timers.begin(), impl_->delayed_timers.end(), timer);
+            if (found != impl_->delayed_timers.end()) {
+                impl_->delayed_timers.erase(found);
+            }
+        }
+        if (!error && operation) {
+            operation();
+        }
+    });
 }
 
 void AsyncDataSource::connect(const DataSourceConfig& config, CompletionCallback completion) {

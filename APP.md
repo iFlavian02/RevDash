@@ -47,4 +47,12 @@ The ISO-TP trace codec is a platform-neutral validation and fixture utility. Its
 
 `MetricAggregator` uses monotonic timestamps for per-metric rolling windows and provides min/max/mean/median only from valid samples. Its most recent status retains unsupported, dropped, and invalid outcomes; valid samples become stale according to per-metric thresholds. Source-switch, playback-seek, and epoch changes clear both the quality state and all rolling windows so no pre-reset samples can influence new diagnostic decisions.
 
-No physical adapter, synthetic ECU behavior, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.
+## Synthetic simulation
+
+Stage 3 supplies an offline `SyntheticPowertrain` with a fixed 10 ms integration step. Its torque balance, PI idle controller, redline limiter, drivetrain, airflow, and coolant model are deterministic for a matching configuration and input sequence; caller/UI update cadence must not change the resulting state. The physical state is authoritative and remains distinct from the optional Gaussian-noise sensor view.
+
+Simulation faults are procedural rather than recorded fixtures. Misfire produces torque instability, an ECU-scoped P0300–P0304 DTC, and a first-occurrence freeze frame; vacuum leak raises low-load trims and emits P0171; a stuck-open thermostat limits warmup and emits P0128. Packet loss and noise share the deterministic PRNG seed. Clearing diagnostic information resets injected faults and its captured frame.
+
+`SyntheticDataSource` derives from `AsyncDataSource`, so it preserves the common non-blocking lifecycle and source-worker callback rules. It accepts complete canonical requests and emits complete logical Mode 01/02/03/04/07/09 responses with virtual CAN ECU addresses. Unsupported requests receive an ECU negative response. Configured reply latency is scheduled on the source worker and cancelled during source destruction; it never creates an independent I/O thread. Public controls post throttle, ambient, fault, and reset changes to that same worker.
+
+No physical adapter, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.

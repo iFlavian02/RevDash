@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <memory>
 #include "revdash/core/data_source.hpp"
@@ -31,6 +32,7 @@ protected:
     virtual void startTransmit(const ObdRequest& request, CompletionCallback completion) = 0;
 
     void postToWorker(std::function<void()> operation);
+    void postAfterToWorker(std::chrono::milliseconds delay, std::function<void()> operation);
     void publishMessage(const ObdMessage& message);
 
 private:

@@ -37,6 +37,8 @@ struct SyntheticConfig {
     bool inject_thermostat_fault{false};
     double noise_std_dev{0.0};
     double packet_dropout_prob{0.0};
+    std::chrono::milliseconds response_latency{0};
+    bool include_second_ecu{false};
 
     [[nodiscard]] bool operator==(const SyntheticConfig& other) const noexcept {
         return deterministic_seed == other.deterministic_seed &&
@@ -48,7 +50,9 @@ struct SyntheticConfig {
                inject_vacuum_leak == other.inject_vacuum_leak &&
                inject_thermostat_fault == other.inject_thermostat_fault &&
                noise_std_dev == other.noise_std_dev &&
-               packet_dropout_prob == other.packet_dropout_prob;
+               packet_dropout_prob == other.packet_dropout_prob &&
+               response_latency == other.response_latency &&
+               include_second_ecu == other.include_second_ecu;
     }
 };
 
