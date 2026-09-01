@@ -18,6 +18,7 @@
 
 - Use `tl::expected<T, Error>` for expected operational failures; do not use exceptions for normal telemetry-pipeline control flow.
 - Build RevDash-owned targets with strict warnings: `/W4`, `/WX`, `/permissive-`, `/Zc:__cplusplus`, and UTF-8 source handling on MSVC.
+- Explicitly initialize every member when using designated aggregate initialization, including members with default member initializers and optional fields. Use the intended empty/default value (`false`, `{}`, or `std::nullopt`) where appropriate; the strict warnings-as-errors policy treats missing-field initializer diagnostics as build failures.
 - Windows AddressSanitizer is enabled only through the dedicated `windows-msvc-asan` preset. Linux ASan/UBSan and optional TSan policy will be added with the Linux stage.
 - Use Boost.Asio for asynchronous transports and Boost.Lockfree only behind a project-owned bounded queue wrapper. Correct coherent snapshots take priority over speculative lock-free telemetry storage.
 

@@ -23,7 +23,12 @@ constexpr std::array kReconnectDelays{
     std::chrono::milliseconds{5000}};
 
 Error invalidState(std::string message) {
-    return Error{.domain = ErrorDomain::Core, .code = std::string{toString(ErrorCode::CoreInvalidState)}, .message = std::move(message)};
+    return Error{
+        .domain = ErrorDomain::Core,
+        .code = std::string{toString(ErrorCode::CoreInvalidState)},
+        .message = std::move(message),
+        .retryable = false,
+        .context = {}};
 }
 
 } // namespace
@@ -79,7 +84,7 @@ void EngineService::connect(const DataSourceConfig& config, EngineCompletion com
         active_config_ = config; reconnect_at_.reset(); reconnect_attempt_ = 0; reconnecting_ = false;
         source_->connect(config, [this, completion = std::move(completion)](Result<void> result) mutable {
             enqueue([this, completion = std::move(completion), result = std::move(result)]() mutable {
-                if (result) { connection_state_.store(ConnectionState::Ready); publishEvent({.type = EngineEventType::ConnectionStateChanged, .connection_state = ConnectionState::Ready, .epoch = epoch()}); }
+                if (result) { connection_state_.store(ConnectionState::Ready); publishEvent({.type = EngineEventType::ConnectionStateChanged, .connection_state = ConnectionState::Ready, .epoch = epoch(), .error = std::nullopt}); }
                 if (completion) completion(std::move(result));
             });
         });
@@ -93,7 +98,7 @@ void EngineService::disconnect(EngineCompletion completion) {
         source_->disconnect([this, completion = std::move(completion)](Result<void> result) mutable {
             enqueue([this, completion = std::move(completion), result = std::move(result)]() mutable {
                 connection_state_.store(result ? ConnectionState::Disconnected : ConnectionState::Faulted);
-                publishEvent({.type = EngineEventType::ConnectionStateChanged, .connection_state = connectionState(), .epoch = epoch()});
+                publishEvent({.type = EngineEventType::ConnectionStateChanged, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
                 if (completion) completion(std::move(result));
             });
         });
@@ -173,9 +178,9 @@ void EngineService::processPackets() {
             const auto decoded = protocol::decodeMode01Response(packet.message, payload[1]);
             if (!decoded) { publishEvent({.type = EngineEventType::Error, .epoch = epoch(), .error = decoded.error()}); continue; }
             for (const auto& sample : *decoded) { telemetry_store_.update(sample); metric_aggregator_.ingest(sample); diagnostic_evaluator_.ingest(sample); }
-            publishEvent({.type = EngineEventType::TelemetryUpdated, .connection_state = connectionState(), .epoch = epoch()});
+            publishEvent({.type = EngineEventType::TelemetryUpdated, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
             if (diagnostic_evaluator_.evaluate(packet.message.monotonic_ts)) {
-                publishEvent({.type = EngineEventType::DiagnosticFindingsUpdated, .connection_state = connectionState(), .epoch = epoch()});
+                publishEvent({.type = EngineEventType::DiagnosticFindingsUpdated, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
             }
         }
         static_cast<void>(engine_to_recorder_->tryPush(RecorderPacket{.engine_epoch = packet.engine_epoch, .message = packet.message}));
