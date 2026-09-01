@@ -43,4 +43,6 @@ Stage 2.2 diagnostic services also consume complete logical J1979 messages, neve
 
 Mode 04 is limited here to request formatting and strict response parsing; a safety workflow for actually clearing faults is deferred to the engine stage. Mode 09 parsing supports VIN, calibration-ID, and CVN records. VINs require one record marker followed by exactly 17 permitted characters. Multi-record CALID/CVN data may occur in one logical message and cross-message accumulation must use `mergeMode09Metadata`, which rejects mixing ECU sources or conflicting VIN values.
 
+The ISO-TP trace codec is a platform-neutral validation and fixture utility. Its explicit source/destination address key preserves 11-bit and 29-bit CAN identity while deterministic reassembly tracks declared length, consecutive-frame sequence rollover, duplicate/missing frames, and timeouts. It enforces the 4095-byte application ceiling. It must not be used to send production ISO-TP flow control: ELM327 owns normal flow control, and future Linux transport uses kernel `CAN_ISOTP` segmentation and reassembly.
+
 No physical adapter, synthetic ECU behavior, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.

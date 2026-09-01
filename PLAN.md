@@ -674,25 +674,25 @@ ctest --preset windows-msvc-debug -R "dtc_codec|mode02|mode04|mode09" --output-o
 
 This codec is a protocol utility, **not** the normal ELM327 or Linux production transport.
 
-* [ ] Decode/represent:
+* [x] Decode/represent:
 
   * SF;
   * FF;
   * CF;
   * FC.
-* [ ] Support 11-bit and 29-bit CAN identifiers in trace metadata.
-* [ ] Implement deterministic reassembly keyed by source/destination addressing.
-* [ ] Track:
+* [x] Support 11-bit and 29-bit CAN identifiers in trace metadata.
+* [x] Implement deterministic reassembly keyed by source/destination addressing.
+* [x] Track:
 
   * expected sequence;
   * rollover;
   * declared length;
   * timeout;
   * malformed sequences.
-* [ ] Reject payloads exceeding application limits.
-* [ ] Implement fixture helpers for producing known ISO-TP frame sequences.
-* [ ] Keep codec independent of Windows/Linux APIs.
-* [ ] Explicitly document:
+* [x] Reject payloads exceeding application limits.
+* [x] Implement fixture helpers for producing known ISO-TP frame sequences.
+* [x] Keep codec independent of Windows/Linux APIs.
+* [x] Explicitly document:
 
   * ELM327 owns normal transport flow control;
   * Linux `CAN_ISOTP` owns production segmentation/reassembly.
