@@ -7,6 +7,7 @@
 #include <thread>
 #include "revdash/core/bounded_spsc_queue.hpp"
 #include "revdash/core/latest_telemetry_store.hpp"
+#include "revdash/core/metric_aggregator.hpp"
 #include "revdash/core/pipeline_packets.hpp"
 
 using namespace revdash::core;
@@ -214,4 +215,33 @@ TEST_CASE("LatestTelemetryStore publishes complete snapshots and lock health", "
     const auto health = store.health();
     REQUIRE(health.read_lock_contentions == 0);
     REQUIRE(health.write_lock_contentions == 0);
+}
+
+TEST_CASE("MetricAggregator provides monotonic rolling statistics and quality", "[metric_aggregator]") {
+    MetricAggregator aggregator{std::chrono::seconds{10}};
+    const auto start = MonotonicTimePoint{};
+    for (const auto [seconds, value] : std::array<std::pair<int, double>, 3>{{{0, 10.0}, {3, 30.0}, {7, 20.0}}}) {
+        aggregator.ingest(TelemetrySample{.metric_id = MetricId::Rpm, .value = value, .quality = SampleQuality::Valid, .monotonic_ts = start + std::chrono::seconds{seconds}});
+    }
+    const auto stats = aggregator.statistics(MetricId::Rpm, start + std::chrono::seconds{8});
+    REQUIRE(stats.has_value()); REQUIRE(stats->minimum == 10.0); REQUIRE(stats->maximum == 30.0); REQUIRE(stats->mean == 20.0); REQUIRE(stats->median == 20.0); REQUIRE(stats->count == 3);
+    REQUIRE(aggregator.quality(MetricId::Rpm, start + std::chrono::seconds{7}) == SampleQuality::Valid);
+    REQUIRE(aggregator.quality(MetricId::Rpm, start + std::chrono::seconds{9}) == SampleQuality::Stale);
+    REQUIRE_FALSE(aggregator.statistics(MetricId::Rpm, start + std::chrono::seconds{18}).has_value());
+}
+
+TEST_CASE("MetricAggregator propagates non-valid quality and resets windows", "[metric_aggregator]") {
+    MetricAggregator aggregator;
+    const auto time = MonotonicTimePoint{};
+    REQUIRE(aggregator.quality(MetricId::Maf, time) == SampleQuality::Unsupported);
+    aggregator.ingest(TelemetrySample{.metric_id = MetricId::Maf, .quality = SampleQuality::Dropped, .monotonic_ts = time});
+    REQUIRE(aggregator.quality(MetricId::Maf, time) == SampleQuality::Dropped);
+    aggregator.ingest(TelemetrySample{.metric_id = MetricId::Maf, .quality = SampleQuality::Invalid, .monotonic_ts = time});
+    REQUIRE(aggregator.quality(MetricId::Maf, time) == SampleQuality::Invalid);
+    aggregator.ingest(TelemetrySample{.metric_id = MetricId::Maf, .value = 12.0, .quality = SampleQuality::Valid, .monotonic_ts = time});
+    aggregator.resetForSourceSwitch(); REQUIRE_FALSE(aggregator.statistics(MetricId::Maf, time).has_value());
+    aggregator.ingest(TelemetrySample{.metric_id = MetricId::Maf, .value = 13.0, .quality = SampleQuality::Valid, .monotonic_ts = time});
+    aggregator.resetForPlaybackSeek(); REQUIRE_FALSE(aggregator.statistics(MetricId::Maf, time).has_value());
+    aggregator.ingest(TelemetrySample{.metric_id = MetricId::Maf, .value = 14.0, .quality = SampleQuality::Valid, .monotonic_ts = time});
+    aggregator.setEpoch(1); REQUIRE(aggregator.epoch() == 1); REQUIRE_FALSE(aggregator.statistics(MetricId::Maf, time).has_value());
 }

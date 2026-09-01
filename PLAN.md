@@ -722,28 +722,28 @@ ctest --preset windows-msvc-debug -R isotp_trace --output-on-failure
 
 ## Step 2.4: Add metric aggregation and quality tracking
 
-* [ ] Implement rolling:
+* [x] Implement rolling:
 
   * min;
   * max;
   * mean;
   * median where needed by rules;
   * time-window views.
-* [ ] Use monotonic time.
-* [ ] Implement:
+* [x] Use monotonic time.
+* [x] Implement:
 
   * `Valid`;
   * `Stale`;
   * `Unsupported`;
   * `Dropped`;
   * `Invalid`.
-* [ ] Define per-metric stale thresholds.
-* [ ] Reset rolling state after:
+* [x] Define per-metric stale thresholds.
+* [x] Reset rolling state after:
 
   * source switch;
   * playback seek;
   * engine epoch change.
-* [ ] Prevent pre-reset samples from leaking into new diagnostic windows.
+* [x] Prevent pre-reset samples from leaking into new diagnostic windows.
 
 ### Tests
 

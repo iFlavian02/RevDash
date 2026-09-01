@@ -45,4 +45,6 @@ Mode 04 is limited here to request formatting and strict response parsing; a saf
 
 The ISO-TP trace codec is a platform-neutral validation and fixture utility. Its explicit source/destination address key preserves 11-bit and 29-bit CAN identity while deterministic reassembly tracks declared length, consecutive-frame sequence rollover, duplicate/missing frames, and timeouts. It enforces the 4095-byte application ceiling. It must not be used to send production ISO-TP flow control: ELM327 owns normal flow control, and future Linux transport uses kernel `CAN_ISOTP` segmentation and reassembly.
 
+`MetricAggregator` uses monotonic timestamps for per-metric rolling windows and provides min/max/mean/median only from valid samples. Its most recent status retains unsupported, dropped, and invalid outcomes; valid samples become stale according to per-metric thresholds. Source-switch, playback-seek, and epoch changes clear both the quality state and all rolling windows so no pre-reset samples can influence new diagnostic decisions.
+
 No physical adapter, synthetic ECU behavior, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.
