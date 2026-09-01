@@ -1052,7 +1052,7 @@ ctest --preset windows-msvc-debug -R elm327 --output-on-failure
 
 ---
 
-## Step 4.3: Implement adaptive PID scheduler
+## Step 4.3: Implement adaptive PID scheduler [x]
 
 * [ ] Build desired polling tiers rather than assuming fixed adapter throughput.
 * [ ] High priority:

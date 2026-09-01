@@ -31,6 +31,7 @@ add_library(revdash_core STATIC
     src/core/types.cpp
     src/drivers/elm327/serial_transport.cpp
     src/drivers/elm327/elm327.cpp
+    src/drivers/elm327/pid_scheduler.cpp
     src/drivers/synthetic/synthetic.cpp
     src/protocol/diagnostics.cpp
     src/protocol/isotp_trace.cpp
@@ -138,6 +139,7 @@ add_executable(revdash_unit_tests
     tests/unit/test_synthetic.cpp
     tests/unit/test_serial_transport.cpp
     tests/unit/test_elm327.cpp
+    tests/unit/test_pid_scheduler.cpp
 )
 
 target_link_libraries(revdash_unit_tests
@@ -164,6 +166,7 @@ add_test(NAME synthetic_faults COMMAND revdash_unit_tests "[synthetic_faults]")
 add_test(NAME synthetic_source COMMAND revdash_unit_tests "[synthetic_source]")
 add_test(NAME serial_transport COMMAND revdash_unit_tests "[serial_transport]")
 add_test(NAME elm327 COMMAND revdash_unit_tests "[elm327]")
+add_test(NAME pid_scheduler COMMAND revdash_unit_tests "[pid_scheduler]")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp
