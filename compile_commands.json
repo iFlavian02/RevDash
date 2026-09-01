@@ -1,0 +1,32 @@
+[
+{
+  "directory": "D:/Apps/RevDash/build/windows-msvc",
+  "command": "C:\\PROGRA~1\\MICROS~4\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1451~1.362\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -ID:\\Apps\\RevDash\\headers -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\include -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\share -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi /W4 /WX /permissive- /Zc:__cplusplus /utf-8 /EHsc /bigobj /Od /Zi /wd4251 /wd4275 @CMakeFiles\\revdash_core.dir\\src\\core\\types.cpp.obj.modmap /FoCMakeFiles\\revdash_core.dir\\src\\core\\types.cpp.obj /FdCMakeFiles\\revdash_core.dir\\revdash_core.pdb /FS -c D:\\Apps\\RevDash\\src\\core\\types.cpp",
+  "file": "D:/Apps/RevDash/src/core/types.cpp",
+  "output": "D:/Apps/RevDash/build/windows-msvc/CMakeFiles/revdash_core.dir/src/core/types.cpp.obj"
+},
+{
+  "directory": "D:/Apps/RevDash/build/windows-msvc",
+  "command": "C:\\PROGRA~1\\MICROS~4\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1451~1.362\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DCLI11_COMPILE -DFMT_SHARED -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -ID:\\Apps\\RevDash\\headers -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\include -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\share -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi /W4 /WX /permissive- /Zc:__cplusplus /utf-8 /EHsc /bigobj /Od /Zi /wd4251 /wd4275 @CMakeFiles\\revdash_cli.dir\\src\\cli\\main.cpp.obj.modmap /FoCMakeFiles\\revdash_cli.dir\\src\\cli\\main.cpp.obj /FdCMakeFiles\\revdash_cli.dir\\ /FS -c D:\\Apps\\RevDash\\src\\cli\\main.cpp",
+  "file": "D:/Apps/RevDash/src/cli/main.cpp",
+  "output": "D:/Apps/RevDash/build/windows-msvc/CMakeFiles/revdash_cli.dir/src/cli/main.cpp.obj"
+},
+{
+  "directory": "D:/Apps/RevDash/build/windows-msvc",
+  "command": "C:\\PROGRA~1\\MICROS~4\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1451~1.362\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DCLI11_COMPILE -DFMT_SHARED -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -ID:\\Apps\\RevDash\\headers -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\include -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\share -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi /W4 /WX /permissive- /Zc:__cplusplus /utf-8 /EHsc /bigobj /Od /Zi /wd4251 /wd4275 @CMakeFiles\\revdash_dtc_importer.dir\\tools\\dtc_importer\\main.cpp.obj.modmap /FoCMakeFiles\\revdash_dtc_importer.dir\\tools\\dtc_importer\\main.cpp.obj /FdCMakeFiles\\revdash_dtc_importer.dir\\ /FS -c D:\\Apps\\RevDash\\tools\\dtc_importer\\main.cpp",
+  "file": "D:/Apps/RevDash/tools/dtc_importer/main.cpp",
+  "output": "D:/Apps/RevDash/build/windows-msvc/CMakeFiles/revdash_dtc_importer.dir/tools/dtc_importer/main.cpp.obj"
+},
+{
+  "directory": "D:/Apps/RevDash/build/windows-msvc",
+  "command": "C:\\PROGRA~1\\MICROS~4\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1451~1.362\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -ID:\\Apps\\RevDash\\headers -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\include -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\share -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi /W4 /WX /permissive- /Zc:__cplusplus /utf-8 /EHsc /bigobj /Od /Zi /wd4251 /wd4275 @CMakeFiles\\revdash_app.dir\\src\\app\\main.cpp.obj.modmap /FoCMakeFiles\\revdash_app.dir\\src\\app\\main.cpp.obj /FdCMakeFiles\\revdash_app.dir\\ /FS -c D:\\Apps\\RevDash\\src\\app\\main.cpp",
+  "file": "D:/Apps/RevDash/src/app/main.cpp",
+  "output": "D:/Apps/RevDash/build/windows-msvc/CMakeFiles/revdash_app.dir/src/app/main.cpp.obj"
+},
+{
+  "directory": "D:/Apps/RevDash/build/windows-msvc",
+  "command": "C:\\PROGRA~1\\MICROS~4\\18\\COMMUN~1\\VC\\Tools\\MSVC\\1451~1.362\\bin\\Hostx64\\x64\\cl.exe  /nologo /TP -DFMT_SHARED -DSPDLOG_COMPILED_LIB -DSPDLOG_FMT_EXTERNAL -DSPDLOG_SHARED_LIB -ID:\\Apps\\RevDash\\headers -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\include -external:ID:\\Apps\\RevDash\\build\\windows-msvc\\vcpkg_installed\\x64-windows\\share -external:W0 /DWIN32 /D_WINDOWS /EHsc /Ob0 /Od /RTC1 -std:c++20 -MDd -Zi /W4 /WX /permissive- /Zc:__cplusplus /utf-8 /EHsc /bigobj /Od /Zi /wd4251 /wd4275 @CMakeFiles\\revdash_unit_tests.dir\\tests\\unit\\test_main.cpp.obj.modmap /FoCMakeFiles\\revdash_unit_tests.dir\\tests\\unit\\test_main.cpp.obj /FdCMakeFiles\\revdash_unit_tests.dir\\ /FS -c D:\\Apps\\RevDash\\tests\\unit\\test_main.cpp",
+  "file": "D:/Apps/RevDash/tests/unit/test_main.cpp",
+  "output": "D:/Apps/RevDash/build/windows-msvc/CMakeFiles/revdash_unit_tests.dir/tests/unit/test_main.cpp.obj"
+}
+]

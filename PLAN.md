@@ -1,341 +1,2340 @@
 # Implementation Plan: RevDash Full OBD-II Diagnostics Application
 
 ## Goal & Scope
-- **Objective:** Build a staged, offline desktop OBD-II diagnostics application for enthusiasts. Windows v1 will support ELM327 USB/Bluetooth SPP and deterministic simulation; a later Linux stage will add SocketCAN and DEB packaging.
-- **Success Criteria:** Users can connect or simulate a vehicle, view live telemetry, scan active/pending DTCs and freeze frames, read VIN/ECU metadata, receive heuristic findings, safely clear faults, record/replay sessions, export CSV, and install the Qt/QML application on Windows.
-- **Out of Scope:** BLE/Wi-Fi adapters, manufacturer-specific diagnostics, ECU programming/coding, cloud accounts, remote telemetry, mobile/web clients, simultaneous vehicle connections, macOS, automatic session deletion, code signing, and acquisition of the licensed DTC dataset.
-- **Assumptions & Defaults:**
-  - C++20, CMake 3.28+, MSVC 2022 x64, Qt 6.11.x, dynamic Qt linking, and vcpkg manifest mode.
-  - Qt 6.11 supports MSVC 2022 on Windows 10/11 x64. [Qt Windows support](https://doc.qt.io/qt-6/windows.html)
-  - The engine remains independent of Qt and runs in-process using dedicated worker threads; Qt/QML remains on the main thread.
-  - One data source is active at a time.
-  - Windows v1 includes ELM327, simulation, CLI, all six UI workspaces, and an MSI installer. SocketCAN and DEB packaging follow in a later stage.
-  - Core values use SI units; UI and exports support metric and imperial display.
-  - Sessions use versioned JSON Lines; CSV is an export format.
-  - Generic SAE OBD-II only. A licensed CSV dataset is supplied externally for complete DTC descriptions.
-  - English-only v1 UI, with user-facing strings kept localization-ready.
-  - Do not modify `.idea/` or generated `cmake-build-debug/` content.
+
+### Objective
+
+Build a staged, offline desktop OBD-II diagnostics application for automotive enthusiasts.
+
+Windows v1 will support:
+
+* ELM327-compatible USB serial adapters;
+* Bluetooth Classic SPP adapters exposed as Windows COM ports;
+* deterministic vehicle simulation;
+* generic SAE OBD-II diagnostics;
+* live telemetry;
+* DTC scanning and freeze-frame inspection;
+* vehicle/ECU metadata;
+* heuristic diagnostic findings;
+* guarded fault clearing;
+* session recording/playback;
+* CSV export;
+* headless CLI operation;
+* Qt/QML desktop UI;
+* MSI installation.
+
+A later Linux stage will add native SocketCAN support and DEB packaging.
+
+### Success Criteria
+
+Users can:
+
+* connect to a supported physical adapter or deterministic simulator;
+* view live OBD-II telemetry with quality/health information;
+* scan stored and pending DTCs;
+* inspect freeze-frame data;
+* read VIN, calibration IDs, CVNs, and available ECU metadata;
+* receive clearly identified heuristic diagnostic findings with supporting evidence;
+* clear emissions-related diagnostic information through a guarded workflow;
+* record complete diagnostic sessions;
+* replay sessions deterministically;
+* export telemetry to CSV;
+* use equivalent backend functionality through a CLI;
+* install and run the application on a clean Windows system.
+
+### Out of Scope
+
+* Bluetooth Low Energy adapters;
+* Wi-Fi ELM adapters;
+* manufacturer-specific diagnostics;
+* UDS service coverage beyond what is required internally for generic OBD-II;
+* ECU programming, flashing, adaptation, coding, or immobilizer operations;
+* cloud accounts;
+* remote telemetry;
+* mobile/web clients;
+* simultaneous active vehicle connections;
+* macOS;
+* automatic session deletion;
+* code signing;
+* acquisition of the licensed production DTC dataset;
+* proprietary OEM PID databases.
+
+---
+
+## Architecture & Technical Decisions
+
+### Toolchain Baseline
+
+* C++20.
+* CMake 3.30+.
+* MSVC 2022 x64 for Windows.
+* Qt 6.11.2 baseline for Windows v1.
+* Dynamic Qt linking.
+* vcpkg manifest mode with a pinned baseline.
+* GCC/Clang support added during the Linux stage.
+* Windows sanitizer configuration uses AddressSanitizer.
+* Linux sanitizer configurations use ASan + UBSan; core concurrency tests may additionally use a separate TSan lane when supported.
+
+`MODERN.md` must record the exact adopted toolchain/dependency versions once they are established.
+
+### Qt Licensing Boundary
+
+Default architecture must use Qt modules available under an LGPL-compatible open-source licensing path.
+
+Do not depend on Qt Graphs, Qt Canvas Painter, or another GPL-only Qt module unless the project explicitly adopts a compatible GPL license or commercial Qt licensing.
+
+Telemetry charts will therefore use a custom Qt Quick scene-graph item rather than Qt Graphs.
+
+### Core/UI Boundary
+
+`revdash_core` remains completely independent of Qt.
+
+Qt/QML exists only in the desktop presentation layer.
+
+The core engine, protocol implementation, drivers, diagnostics, sessions, simulation, and CLI must remain usable without creating a Qt application.
+
+### Data-Source Architecture
+
+Only one active `IDataSource` exists at a time.
+
+Supported configurations:
+
+* Serial ELM327;
+* Synthetic;
+* Playback;
+* later SocketCAN.
+
+All sources expose canonical logical OBD requests/responses to the engine.
+
+Transport-specific framing remains inside the source implementation.
+
+### Transport Ownership
+
+#### ELM327
+
+The ELM327 remains responsible for:
+
+* physical OBD protocol handling;
+* ISO 15765 transmission formatting;
+* ISO-TP flow-control generation;
+* transport timing required by the selected vehicle protocol.
+
+RevDash remains responsible for:
+
+* ELM command synchronization;
+* parsing responses;
+* preserving ECU/header identity;
+* normalizing responses into canonical `ObdMessage` objects;
+* validating logical OBD payloads.
+
+RevDash must **not** generate ISO-TP flow-control frames through ELM327 during normal operation.
+
+Headers remain enabled so ECU identity is preserved.
+
+#### Linux SocketCAN
+
+Linux production diagnostics use kernel `CAN_ISOTP` sockets for per-ECU ISO-TP diagnostic exchanges.
+
+`CAN_RAW` is used only where appropriate for:
+
+* functional ECU discovery;
+* bounded single-frame discovery traffic;
+* optional raw monitoring/trace capture.
+
+Do not recreate production ISO-TP segmentation, flow control, and pacing in userspace when the kernel transport is available.
+
+### Portable ISO-TP Utility
+
+A platform-neutral ISO-TP codec may exist for:
+
+* deterministic protocol tests;
+* raw CAN trace validation;
+* fixture generation;
+* reassembling captured frame sequences;
+* validating expected SF/FF/CF/FC behavior.
+
+It is not the default production transport implementation for either ELM327 or Linux `CAN_ISOTP`.
+
+### Thread Ownership
+
+Desktop process:
+
+```text
+Qt/QML main thread
+        |
+        | async commands / snapshots
+        v
+Engine worker
+        |
+        +---- active IDataSource worker/executor
+        |
+        +---- recorder worker
+```
+
+Responsibilities:
+
+* UI thread owns all `QObject`/QML mutations.
+* Each active source owns its transport worker/executor.
+* Engine worker owns scheduling, decoding, aggregation, diagnostics, and orchestration.
+* Recorder worker owns session file I/O.
+* Source → engine and engine → recorder hot paths use bounded SPSC queues.
+* UI → engine commands use a safe serialized command queue.
+* No blocking vehicle I/O occurs on the UI thread.
+
+### Queue Policy
+
+Use `boost::lockfree::spsc_queue` behind a project wrapper rather than implementing a new lock-free queue algorithm.
+
+The wrapper provides:
+
+* compile-time bounded capacity;
+* non-blocking push/pop;
+* overflow counters;
+* explicit drop policy;
+* queue health instrumentation.
+
+Initial capacities:
+
+* source → engine: 1024 packets;
+* engine → recorder: 2048 packets.
+
+Capacity values must remain configurable constants and validated under acceptance workloads.
+
+### Latest Telemetry Store
+
+Correctness takes priority over an unnecessary lock-free implementation.
+
+Maintain fixed metric slots and provide coherent `TelemetrySnapshot` reads using a small synchronization primitive such as `std::shared_mutex`.
+
+Do not store logically related value/timestamp/quality fields as unrelated atomics that can be observed from different updates.
+
+Optimize further only if profiling demonstrates meaningful contention.
+
+### Time
+
+Use:
+
+* monotonic time for scheduling, latency, timeouts, playback, rule windows, and aggregation;
+* UTC timestamps for durable session/audit metadata.
+
+Provide an injectable/manual test clock where deterministic timeout/window tests require it.
+
+### Units
+
+Core values remain SI.
+
+Conversions occur only at presentation/export boundaries.
+
+Supported display/export modes:
+
+* Metric;
+* Imperial.
+
+### Session Format
+
+Canonical session format:
+
+* versioned JSON Lines;
+* streaming-friendly;
+* integer `elapsed_us` monotonic offsets;
+* UTC session metadata;
+* raw logical OBD payloads represented as uppercase hex;
+* explicit ECU/source identity;
+* explicit schema version.
+
+CSV is export-only.
+
+### DTC Dataset
+
+A licensed external CSV dataset supplies production DTC descriptions.
+
+The repository contains only legal fixture data required for tests unless the production dataset license explicitly allows redistribution.
+
+A production package must fail its release gate if the required production DTC database is absent.
+
+Never silently substitute fixture DTC data into a release build.
+
+### Localization
+
+Windows v1 UI is English-only.
+
+All user-facing strings must nevertheless remain localization-ready.
+
+### Repository Safety
+
+Do not modify:
+
+* `.idea/`;
+* generated `cmake-build-debug/`;
+* other IDE-generated build directories.
+
+---
 
 ## Affected Files
-- `CMakeLists.txt` (Modify: replace the placeholder target with modular core, CLI, UI, tools, tests, and packaging targets)
-- `src/main.cpp` (Remove after dedicated CLI and desktop entry points exist)
-- `CMakePresets.json` (Create: MSVC debug/release and later Linux presets)
-- `vcpkg.json` / `vcpkg-configuration.json` (Create: pinned native dependencies)
-- `.gitignore` (Create: exclude builds, vcpkg output, sessions, and licensed raw datasets)
-- `cmake/CompilerOptions.cmake` / `cmake/Packaging.cmake` (Create: warnings, sanitizers, deployment, and CPack settings)
-- `headers/revdash/core/*.hpp` / `src/core/*.cpp` (Create: common models, results, data-source contracts, threading, and engine service)
-- `headers/revdash/protocol/*.hpp` / `src/protocol/*.cpp` (Create: J1979, PID, DTC, Mode 09, and ISO-TP codecs)
-- `headers/revdash/drivers/*.hpp` / `src/drivers/elm327/*.cpp` (Create: serial enumeration, prompt synchronization, and ELM327 driver)
-- `src/drivers/synthetic/*.cpp` (Create: deterministic engine model and fault injection)
-- `src/drivers/socketcan/*.cpp` (Create later: Linux AF_CAN driver)
-- `headers/revdash/telemetry/*.hpp` / `src/telemetry/*.cpp` (Create: scheduler, SPSC pipeline, aggregation, and metric snapshots)
-- `headers/revdash/diagnostics/*.hpp` / `src/diagnostics/*.cpp` (Create: rule engine, DTC lookup, diagnostic commands, and guarded clearing)
-- `headers/revdash/session/*.hpp` / `src/session/*.cpp` (Create: JSONL recorder, playback source, seek index, and CSV export)
-- `src/cli/main.cpp` (Create: headless integration and diagnostic commands)
-- `src/app/main.cpp` / `src/ui/*.cpp` (Create: Qt application and engine-to-QML adapters)
-- `qml/*.qml` / `qml/components/*.qml` / `qml/workspaces/*.qml` (Create: complete six-workspace interface)
-- `schemas/session-v1.schema.json` (Create: canonical JSONL record contract)
-- `tools/dtc_importer/*` (Create: licensed CSV validation and SQLite generation)
-- `assets/dtc/revdash_dtc.sqlite` (Generate: packaged read-only lookup database)
-- `assets/licenses/*` (Create: Qt, dependency, and DTC dataset notices)
-- `tests/unit/*` / `tests/integration/*` / `tests/fixtures/*` (Create: deterministic protocol, driver, rule, session, and engine tests)
-- `tests/ui/*` / `tests/hardware/*` (Create: QML and hardware-gated validation)
-- `packaging/windows/*` / `packaging/linux/*` (Create: MSI first, DEB later)
-- `.github/workflows/windows.yml` / `.github/workflows/linux.yml` (Create: build and test automation)
-- `docs/architecture.md` / `docs/session-format.md` / `docs/hardware-validation.md` (Create: contracts and operational guidance)
 
-## Execution Sequence
+Directory/glob entries authorize files created inside the listed path family when required by the corresponding plan Step.
 
-### Feature 1: Stage 1 — Build Foundation and Core Contracts
-- **Step 1.1: Establish reproducible targets and dependencies**
-  - *Sub-step 1.1a:* Lower the excessive CMake minimum to 3.28, require C++20, and create targets `revdash_core`, `revdash_cli`, `revdash_app`, `revdash_dtc_importer`, and corresponding test targets.
-  - *Sub-step 1.1b:* Add MSVC x64 configure/build/test presets. Use `windows-msvc`, `windows-msvc-debug`, and `windows-msvc-release`; reserve `linux-gcc-debug` and `linux-gcc-release` for Stage 10.
-  - *Sub-step 1.1c:* Declare Boost.Asio, Boost.Lockfree, tl-expected, nlohmann-json, SQLite3, spdlog, CLI11, and Catch2 through a pinned vcpkg manifest. Manifest mode is the recommended project-local dependency workflow. [vcpkg manifest documentation](https://learn.microsoft.com/en-us/vcpkg/concepts/manifest-mode)
-  - *Sub-step 1.1d:* Locate Qt separately through `Qt6_ROOT`; keep Qt entirely out of `revdash_core`.
-  - *Sub-step 1.1e:* Enable `/W4`, standard conformance, warnings-as-errors for project targets, and optional ASan/UBSan on supported presets.
-  - *Verification Criteria:* Run `cmake --preset windows-msvc`, then `cmake --build --preset windows-msvc-debug`.
+* [x] `PLAN.md` — update execution state during implementation
+* [x] `APP.md` — create once durable system architecture exists; maintain institutional system knowledge
+* [x] `MODERN.md` — create once toolchain/technology choices are concrete; maintain technology policy
+* [x] `CMakeLists.txt` — replace placeholder target with modular project targets
+* [x] `CMakePresets.json` — Windows and later Linux configure/build/test/sanitizer presets
+* [x] `vcpkg.json`
+* [x] `vcpkg-configuration.json`
+* [x] `.gitignore`
+* [x] `cmake/CompilerOptions.cmake`
+* [x] `cmake/Dependencies.cmake`
+* [ ] `cmake/Packaging.cmake`
+* [x] `headers/revdash/core/*.hpp`
+* [x] `src/core/*.cpp`
+* [ ] `headers/revdash/protocol/*.hpp`
+* [ ] `src/protocol/*.cpp`
+* [ ] `headers/revdash/drivers/*.hpp`
+* [ ] `src/drivers/elm327/*.cpp`
+* [ ] `src/drivers/synthetic/*.cpp`
+* [ ] `src/drivers/playback/*.cpp`
+* [ ] `src/drivers/socketcan/*.cpp` — Stage 10
+* [ ] `headers/revdash/telemetry/*.hpp`
+* [ ] `src/telemetry/*.cpp`
+* [ ] `headers/revdash/diagnostics/*.hpp`
+* [ ] `src/diagnostics/*.cpp`
+* [ ] `headers/revdash/session/*.hpp`
+* [ ] `src/session/*.cpp`
+* [ ] `src/cli/main.cpp`
+* [ ] `src/app/main.cpp`
+* [ ] `src/ui/*.cpp`
+* [ ] `headers/revdash/ui/*.hpp`
+* [ ] `qml/*.qml`
+* [ ] `qml/components/*.qml`
+* [ ] `qml/workspaces/*.qml`
+* [ ] `schemas/session-v1.schema.json`
+* [ ] `tools/dtc_importer/*`
+* [ ] `assets/dtc/*`
+* [ ] `assets/licenses/*`
+* [ ] `assets/icons/*`
+* [x] `tests/unit/*`
+* [x] `tests/integration/*`
+* [ ] `tests/fixtures/*`
+* [ ] `tests/ui/*`
+* [ ] `tests/hardware/*`
+* [ ] `packaging/windows/*`
+* [ ] `packaging/linux/*`
+* [ ] `.github/workflows/windows.yml`
+* [ ] `.github/workflows/linux.yml`
+* [ ] `docs/session-format.md`
+* [ ] `docs/diagnostic-rules.md`
+* [ ] `docs/hardware-validation.md`
+* [ ] `docs/licensing.md`
+* [ ] `src/main.cpp` — remove after dedicated entry points exist
 
-- **Step 1.2: Define canonical domain models**
-  - *Sub-step 1.2a:* Define `ErrorDomain`, `Error`, and `Result<T>` using `tl::expected<T, Error>`. Every error must include a stable code, human-readable message, retryable flag, and optional context.
-  - *Sub-step 1.2b:* Define `ConnectionState` as `Disconnected`, `Connecting`, `Initializing`, `Ready`, `Reconnecting`, `Disconnecting`, and `Faulted`.
-  - *Sub-step 1.2c:* Define fixed-capacity `ObdRequest`, `ObdMessage`, and `RawTransportFrame` models containing source, optional ECU address, monotonic timestamp, UTC timestamp, sequence number, payload length, and bytes.
-  - *Sub-step 1.2d:* Cap ISO-TP payloads at 4095 bytes and reject oversized messages with `Protocol.PayloadTooLarge`.
-  - *Sub-step 1.2e:* Define `MetricId`, `TelemetrySample`, `SampleQuality`, `DtcRecord`, `FreezeFrame`, `EcuMetadata`, `DiagnosticFinding`, `Severity`, and immutable `TelemetrySnapshot`.
-  - *Sub-step 1.2f:* Include RPM, speed, throttle, MAP, MAF, load, timing, coolant, STFT/LTFT, ambient temperature, fuel level, module voltage, and upstream/downstream O2 channels.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R core_types --output-on-failure`.
+---
 
-- **Step 1.3: Define the asynchronous data-source contract**
-  - *Sub-step 1.3a:* Define `IDataSource::connect(config, completion)`, `disconnect(completion)`, `reconnect(completion)`, `transmit(request, completion)`, `connectionState()`, and `subscribe(messageHandler, stateHandler)`.
-  - *Sub-step 1.3b:* Make lifecycle and transmit calls non-blocking; completion and stream callbacks execute on the source worker, never the UI thread.
-  - *Sub-step 1.3c:* Define `DataSourceConfig` variants for serial, synthetic, playback, and later SocketCAN configuration.
-  - *Sub-step 1.3d:* Make disconnect idempotent, cancel outstanding operations with `Core.Cancelled`, stop callbacks before destruction, and preserve the previous configuration for reconnect.
-  - *Sub-step 1.3e:* Define a move-only RAII subscription token so observers cannot receive callbacks after unsubscription.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R data_source_contract --output-on-failure`.
+# Execution Sequence
 
-- **Step 1.4: Implement the concurrency primitives**
-  - *Sub-step 1.4a:* Add a fixed-capacity SPSC ring with acquire/release atomics, cache-line-separated producer/consumer indices, and compile-time capacity validation.
-  - *Sub-step 1.4b:* Use 1024 source-to-pipeline slots and 2048 pipeline-to-recorder slots; reject newest entries on overflow, increment counters, and never block I/O.
-  - *Sub-step 1.4c:* Add a fixed latest-value store keyed by `MetricId`; use atomic scalar/timestamp fields for telemetry and a mutex only for low-frequency DTC/finding collections.
-  - *Sub-step 1.4d:* Prove the steady-state telemetry hot path performs no heap allocation after connection initialization.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R "spsc|latest_store" --output-on-failure`, including a producer/consumer stress test and allocation counter.
+# Feature 1: Stage 1 — Build Foundation and Core Contracts
 
-### Feature 2: Stage 2 — SAE J1979 Protocol and Telemetry Decoding
-- **Step 2.1: Build the table-driven Mode 01 PID catalog**
-  - *Sub-step 2.1a:* Define each PID’s identifier, required byte count, canonical unit, polling tier, decode function, valid range, and display metadata.
-  - *Sub-step 2.1b:* Implement the specified formulas for RPM, speed, coolant, load, throttle, trims, MAP, and MAF.
-  - *Sub-step 2.1c:* Add timing advance `A / 2 - 64`, ambient temperature `A - 40`, fuel level `100A / 255`, and module voltage `(256A+B)/1000`.
-  - *Sub-step 2.1d:* Decode supported-PID bitmaps from PIDs `00`, `20`, `40`, and subsequent ranges; never poll an unsupported PID.
-  - *Sub-step 2.1e:* Select available upstream/downstream O2 channels from the supported narrowband or wideband PID sets and normalize their voltage/equivalence data for the catalyst rule.
-  - *Sub-step 2.1f:* Reject short payloads, invalid response modes, malformed hex, `7F` negative responses, and physically impossible decoded values without publishing a valid sample.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R mode01 --output-on-failure`, covering boundary bytes and known values such as RPM `1A F8 = 1726`.
+## Step 1.1: Establish reproducible targets, dependencies, and project policy
 
-- **Step 2.2: Implement diagnostic modes and DTC decoding**
-  - *Sub-step 2.2a:* Decode Modes 03 and 07 into stored and pending DTC records, ignoring `0000` padding and deduplicating by code/status/ECU.
-  - *Sub-step 2.2b:* Decode the top two bits into `P/C/B/U`, the next two bits into the first numeric digit, and the remaining nibbles into the final three characters.
-  - *Sub-step 2.2c:* Implement Mode 02 frame-zero extraction, supported-freeze-PID discovery, and conversion through the same PID catalog used by Mode 01.
-  - *Sub-step 2.2d:* Define Mode 04 request/positive-response parsing, accepting success only after a valid `0x44` response.
-  - *Sub-step 2.2e:* Implement Mode 09 VIN, calibration ID, and CVN parsing; strip padding and validate VIN as exactly 17 printable characters.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R "dtc_codec|mode02|mode09" --output-on-failure`.
+* [x] Replace placeholder CMake configuration with C++20 project structure.
+* [x] Set CMake minimum to 3.30.
+* [x] Define:
 
-- **Step 2.3: Implement ISO 15765-4 packing and reassembly**
-  - *Sub-step 2.3a:* Support single, first, consecutive, and flow-control frame types, 12-bit payload lengths, sequence rollover, block size, and STmin pacing.
-  - *Sub-step 2.3b:* Support generic 11-bit and 29-bit OBD addressing through configurable request/response ID maps.
-  - *Sub-step 2.3c:* Key reassembly state by source and ECU address; reject wrong sequence numbers, timeouts, overflow frames, and unrelated CAN IDs.
-  - *Sub-step 2.3d:* Make the codec platform-neutral so SocketCAN tests can run from trace fixtures before the Linux driver exists.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R isotp --output-on-failure`, covering single/multi-frame messages, sequence rollover, flow control, and timeouts.
+  * `revdash_core`;
+  * `revdash_cli`;
+  * `revdash_app`;
+  * `revdash_dtc_importer`;
+  * `revdash_unit_tests`;
+  * `revdash_integration_tests`;
+  * later `revdash_ui_tests`.
+* [x] Add Windows presets:
 
-- **Step 2.4: Add metric aggregation and quality tracking**
-  - *Sub-step 2.4a:* Maintain latest, minimum, maximum, arithmetic mean, and time-window history for each supported metric.
-  - *Sub-step 2.4b:* Use monotonic timestamps for calculations and UTC only for session metadata.
-  - *Sub-step 2.4c:* Mark samples `Valid`, `Stale`, `Unsupported`, `Dropped`, or `Invalid`; declare stale after the greater of three expected intervals or a PID-specific minimum timeout.
-  - *Sub-step 2.4d:* Reset windows on source changes, playback seeks, timestamp regression, or explicit engine epoch changes.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R metric_aggregator --output-on-failure`.
+  * `windows-msvc`;
+  * `windows-msvc-debug`;
+  * `windows-msvc-release`;
+  * `windows-msvc-asan`.
+* [x] Reserve Linux presets for Stage 10.
+* [x] Create pinned vcpkg manifest containing:
 
-### Feature 3: Stage 3 — Synthetic Powertrain and Procedural Faults
-- **Step 3.1: Implement the deterministic powertrain model**
-  - *Sub-step 3.1a:* Define `SimulationConfig` with a four-cylinder default engine, displacement, idle/redline RPM, inertia, friction, mass, drag, gearing, wheel radius, ambient temperature, and deterministic seed.
-  - *Sub-step 3.1b:* Advance physics with a fixed 10 ms timestep independent of UI frame rate.
-  - *Sub-step 3.1c:* Derive RPM from combustion torque minus friction and drivetrain load; clamp to zero/redline and maintain idle through an explicit idle controller.
-  - *Sub-step 3.1d:* Derive vehicle speed from wheel torque, rolling resistance, and aerodynamic drag; prevent negative speed.
-  - *Sub-step 3.1e:* Derive MAP from ambient pressure and throttle/vacuum state; derive MAF from displacement, RPM, volumetric efficiency, pressure, and intake temperature.
-  - *Sub-step 3.1f:* Model cold start, load-dependent heat generation, thermostat hysteresis at 88–92°C, fan-on at 98°C, fan-off at 93°C, and ambient-dependent cooling.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R synthetic_physics --output-on-failure`, proving identical traces for identical seeds and physically monotonic throttle/warm-up responses.
+  * Boost.Asio;
+  * Boost.Lockfree;
+  * tl-expected;
+  * nlohmann-json;
+  * SQLite3;
+  * spdlog;
+  * CLI11;
+  * Catch2.
+* [x] Locate Qt separately through `Qt6_ROOT`.
+* [x] Enforce that `revdash_core` cannot link against Qt.
+* [x] Enable MSVC `/W4`, standards conformance, and warnings-as-errors for RevDash targets.
+* [x] Configure Windows AddressSanitizer as a separate supported preset.
+* [x] Scaffold CTest/Catch2 discovery.
+* [x] Create `.gitignore` rules for build output, generated package staging, development sessions, and licensed raw datasets.
+* [x] Create `MODERN.md` with the actual adopted toolchain, dependency baseline, Qt licensing boundary, sanitizer policy, and dependency-selection rules.
 
-- **Step 3.2: Add fault and noise injection**
-  - *Sub-step 3.2a:* Implement random or cylinder-specific misfires that remove combustion torque, create RPM flutter, capture freeze data, and emit P0300–P0304.
-  - *Sub-step 3.2b:* Implement a vacuum leak that drives idle LTFT above +20%, converges below +5% at high load, and emits P0171 after persistence.
-  - *Sub-step 3.2c:* Implement a stuck-open thermostat that increases cooling, prevents normal warm-up under load, and emits P0128.
-  - *Sub-step 3.2d:* Add per-metric Gaussian noise, configurable standard deviation, packet dropout probability, and deterministic random sequencing.
-  - *Sub-step 3.2e:* Preserve the raw physics state separately from noisy sensor output so fault behavior remains reproducible.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R synthetic_faults --output-on-failure`.
+### Tests
 
-- **Step 3.3: Expose simulation through `IDataSource`**
-  - *Sub-step 3.3a:* Implement normal lifecycle transitions and configurable simulated response latency.
-  - *Sub-step 3.3b:* Accept the same OBD requests as a physical source and generate canonical response bytes before they enter the J1979 decoder.
-  - *Sub-step 3.3c:* Support Modes 01, 02, 03, 04, 07, and 09, including a stable test VIN, calibration metadata, pending/stored DTC state, freeze-frame capture, and simulated clearing.
-  - *Sub-step 3.3d:* Expose commands for engine start/stop, throttle, ambient temperature, seed, fault activation, noise, and dropout.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R synthetic_source --output-on-failure`, confirming that simulated responses traverse the production decoder.
+* CMake configure succeeds from a clean build tree.
+* CTest discovers the test runner.
+* Core target builds without Qt linkage.
+* Dependency manifest resolves reproducibly.
+* ASan preset configures successfully on supported MSVC environments.
 
-### Feature 4: Stage 4 — ELM327, Scheduling, and Streaming Engine
-- **Step 4.1: Build cross-platform serial transport**
-  - *Sub-step 4.1a:* Wrap Boost.Asio serial operations behind `ISerialTransport` so fake transports can provide chunked input, delayed prompts, timeouts, and disconnects.
-  - *Sub-step 4.1b:* On Windows enumerate COM devices through SetupAPI, returning port name, friendly label, VID/PID, serial number, and Bluetooth indication where available.
-  - *Sub-step 4.1c:* Support configured baud rates 9600, 38400, and 115200; default to 38400 and retain the successful setting.
-  - *Sub-step 4.1d:* Treat USB and Bluetooth Classic SPP identically after Windows exposes them as COM ports.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R serial_transport --output-on-failure`.
+### Verification
 
-- **Step 4.2: Implement the ELM327 driver and prompt synchronizer**
-  - *Sub-step 4.2a:* Execute `ATZ → ATE0 → ATL0 → ATH0 → ATSP0` in order; accept an ELM banner plus prompt for `ATZ` and require `OK` plus prompt for later commands.
-  - *Sub-step 4.2b:* Retry each initialization command twice, use a five-second reset timeout and adaptive two-second command ceiling, then enter `Faulted` with the failed command recorded.
-  - *Sub-step 4.2c:* Parse arbitrary serial chunks, CR/LF variations, optional spaces, echoed commands, multiple response lines, and `>` prompt boundaries without blocking.
-  - *Sub-step 4.2d:* Classify `NO DATA`, `SEARCHING`, `BUS INIT: ERROR`, `UNABLE TO CONNECT`, `STOPPED`, and `?` into stable protocol/connection errors.
-  - *Sub-step 4.2e:* Measure round-trip time from final command-byte write to prompt receipt and expose EWMA, last latency, timeout count, and malformed-response count.
-  - *Sub-step 4.2f:* On hot-unplug, cancel the active transaction and transition through reconnect rather than leaving an outstanding completion.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R elm327 --output-on-failure` against transcript fixtures split at every possible byte boundary.
+```text
+cmake --preset windows-msvc
+cmake --build --preset windows-msvc-debug
+ctest --preset windows-msvc-debug -N
+```
 
-- **Step 4.3: Implement the dynamic PID scheduler**
-  - *Sub-step 4.3a:* Give RPM, speed, and throttle an aggregate 20–50 response/second high-tier budget with fair round-robin distribution.
-  - *Sub-step 4.3b:* Target each supported MAP, MAF, load, timing, and required O2 metric at 5–10 Hz.
-  - *Sub-step 4.3c:* Target each coolant, trim, ambient, fuel-level, and module-voltage metric at 0.5–1 Hz.
-  - *Sub-step 4.3d:* Serialize ELM transactions to one outstanding request and use earliest-deadline-first ordering inside priority tiers.
-  - *Sub-step 4.3e:* Track EWMA response latency, timeouts, queue occupancy, and achieved per-PID rates; keep estimated bus utilization below 80%.
-  - *Sub-step 4.3f:* On congestion, stretch low-tier intervals first, then mid-tier, and high-tier last; recover rates gradually after ten seconds of stable operation.
-  - *Sub-step 4.3g:* Pause normal polling for Mode 02/03/04/07/09 transactions, drain the current response, execute the diagnostic operation, and resume without a burst.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R pid_scheduler --output-on-failure` using a fake clock and latency profiles from 10–500 ms.
+---
 
-- **Step 4.4: Assemble `EngineService` and worker ownership**
-  - *Sub-step 4.4a:* Let `EngineService` exclusively own the active source, scheduler, pipeline, diagnostics, recorder, and worker lifetimes.
-  - *Sub-step 4.4b:* Use one `std::jthread` for Asio/source I/O, one for decode/aggregation/rules, and one writer thread only while recording.
-  - *Sub-step 4.4c:* Decode source messages into fixed `PipelinePacket` variants before placing normalized packets into the SPSC consumer pipeline.
-  - *Sub-step 4.4d:* Define non-blocking engine commands for connect, disconnect, scan, identify, prepare/confirm clear, recording, playback, export, and simulation control.
-  - *Sub-step 4.4e:* Publish connection, telemetry, DTC, finding, session, and error events while exposing telemetry through the latest-value snapshot store.
-  - *Sub-step 4.4f:* Auto-reconnect recoverable serial failures after 0.5, 1, 2, and 5 seconds, stop after five failures, and reset attempts after a stable connection.
-  - *Sub-step 4.4g:* Increment an engine epoch and clear pending queues/state whenever the source changes or playback seeks.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R engine_pipeline --output-on-failure`, including connect/disconnect races and cooperative shutdown.
+## Step 1.2: Define canonical domain models and time contracts
 
-### Feature 5: Stage 5 — Diagnostics Rules, DTC Database, and Safe Commands
-- **Step 5.1: Implement rolling diagnostic evaluation**
-  - *Sub-step 5.1a:* Use timestamped windows rather than sample counts; gaps or stale inputs reset persistence timers and produce `Unavailable`, not a fault.
-  - *Sub-step 5.1b:* Trigger vacuum-leak warning when idle RPM is 600–900, load is below 30%, median LTFT exceeds +15% for ten seconds, and a five-second high-load window within the last 120 seconds has RPM above 1500, load at least 60%, and median LTFT below +5%.
-  - *Sub-step 5.1c:* Trigger catalyst warning only when coolant is at least 70°C and a 20-second steady window has downstream/upstream O2 oscillation ratio 0.8–1.2 plus normalized correlation of at least 0.7.
-  - *Sub-step 5.1d:* Trigger thermostat advisory when a cold-start session sustains load above 20% for 60 seconds, coolant remains below 80°C, and robust temperature slope is below 0.15°C/s.
-  - *Sub-step 5.1e:* Trigger alternator critical when RPM exceeds 500 and module voltage remains below 13.2 V or above 14.8 V for five seconds.
-  - *Sub-step 5.1f:* Deduplicate findings, attach the exact evidence window, and resolve them after 15 consecutive healthy seconds.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R diagnostic_rules --output-on-failure`, including matching and near-threshold non-matching scenarios.
+* [x] Define `ErrorDomain`, `Error`, and stable application error codes.
+* [x] Define `Result<T>` using `tl::expected<T, Error>`.
+* [x] Error values contain:
 
-- **Step 5.2: Build the offline DTC database pipeline**
-  - *Sub-step 5.2a:* Accept licensed CSV columns `code`, `description`, `severity`, `likely_failure_points`, and `source_version`.
-  - *Sub-step 5.2b:* Validate uppercase DTC format, allowed severity, non-empty descriptions, duplicates, UTF-8, and consistent dataset version before writing output.
-  - *Sub-step 5.2c:* Generate deterministic SQLite tables for codes, likely failure points, source metadata, schema version, record count, and source checksum.
-  - *Sub-step 5.2d:* Require `REVDASH_DTC_DATASET` for release packaging; use a small redistributable fixture database for development tests.
-  - *Sub-step 5.2e:* Expose exact-code lookup, prefix search, normalized case-insensitive search, and `Unknown code` fallback without network access.
-  - *Verification Criteria:* Run `cmake --build --preset windows-msvc-debug --target revdash_dtc_importer`, then `ctest --preset windows-msvc-debug -R dtc_database --output-on-failure`.
+  * stable code;
+  * domain;
+  * user-safe message;
+  * optional diagnostic context;
+  * retryable flag.
+* [x] Define `ConnectionState`:
 
-- **Step 5.3: Implement scan, metadata, and guarded Mode 04 workflows**
-  - *Sub-step 5.3a:* Scan Modes 03 and 07 as one operation, enrich results from SQLite, and query Mode 02 frame zero for stored faults.
-  - *Sub-step 5.3b:* Read Mode 09 VIN, calibration IDs, and CVNs through one metadata command and preserve optional ECU address provenance.
-  - *Sub-step 5.3c:* Define `prepareClearDtc()` to require a ready physical source, a fresh speed sample no greater than 0.5 km/h, and successful pre-clear capture of DTCs/freeze evidence.
-  - *Sub-step 5.3d:* Return a one-use confirmation token, captured evidence, readiness warning, and 30-second expiry; reject playback, stale speed, movement, source changes, or expired tokens.
-  - *Sub-step 5.3e:* Define `confirmClearDtc(token)` to send Mode 04 once, require `0x44`, wait 500 ms, rescan Modes 03/07, and report cleared/remaining codes.
-  - *Sub-step 5.3f:* Write an audit event for preparation, confirmation, response, timeout, and final rescan without claiming success on an ambiguous response.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R diagnostic_service --output-on-failure`, including all safety rejection branches.
+  * `Disconnected`;
+  * `Connecting`;
+  * `Initializing`;
+  * `Ready`;
+  * `Reconnecting`;
+  * `Disconnecting`;
+  * `Faulted`.
+* [x] Define fixed-capacity canonical:
 
-### Feature 6: Stage 6 — Session Recording, Playback, and Export
-- **Step 6.1: Implement versioned JSONL recording**
-  - *Sub-step 6.1a:* Define schema v1 records for header, canonical OBD message, telemetry, connection, DTC scan, diagnostic finding, Mode 04 audit, metadata, dropout, and footer.
-  - *Sub-step 6.1b:* Put session UUID, application/schema versions, UTC start, source configuration, VIN/ECU metadata, units, and simulation seed in the header.
-  - *Sub-step 6.1c:* Store every record with integer `elapsed_us`; encode canonical request/response payloads as uppercase hex.
-  - *Sub-step 6.1d:* Serialize into reusable fixed buffers using `to_chars`, flush at most once per second, and avoid per-record heap allocation after startup.
-  - *Sub-step 6.1e:* Record into a `.partial` file, append a footer with counts/drop counters, flush, and atomically rename to `.jsonl`; preserve incomplete files for recovery.
-  - *Sub-step 6.1f:* When the recorder queue overflows, count rejected records and write a data-loss marker as soon as capacity returns.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R session_recorder --output-on-failure`, including schema validation, truncated-file recovery, and steady-state allocation checks.
+  * `ObdRequest`;
+  * `ObdMessage`;
+  * `RawTransportFrame`;
+  * `EcuAddress`.
+* [x] Preserve:
 
-- **Step 6.2: Implement deterministic playback as a data source**
-  - *Sub-step 6.2a:* Implement `PlaybackDataSource` using the same `ObdMessage` stream consumed from live and simulated sources.
-  - *Sub-step 6.2b:* Support play, pause, one-frame step, stop, seek, and 0.5×/1×/2×/5× speed with monotonic timing.
-  - *Sub-step 6.2c:* Build a rebuildable `.ridx` sidecar containing session checksum and byte offsets at one-second intervals.
-  - *Sub-step 6.2d:* On seek, reset the engine epoch, jump to at most 120 seconds before the target, fast-forward silently to rebuild rolling state, then publish at the requested position.
-  - *Sub-step 6.2e:* Recompute telemetry and findings using current decoders/rules; expose originally recorded findings separately as audit history.
-  - *Sub-step 6.2f:* Accept a final incomplete JSON line only as recoverable truncation; reject invalid headers, incompatible major schema versions, non-monotonic timestamps, and corrupt hex.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R session_playback --output-on-failure`, comparing live-recorded and replayed metric sequences.
+  * source/ECU identity;
+  * monotonic timestamp;
+  * optional UTC timestamp;
+  * logical payload length.
+* [x] Enforce application-level transport payload ceiling of 4095 bytes with `Protocol.PayloadTooLarge`.
+* [x] Define:
 
-- **Step 6.3: Implement automotive CSV export**
-  - *Sub-step 6.3a:* Resample asynchronous telemetry at 10 Hz, carrying forward only non-stale values and leaving unavailable columns empty.
-  - *Sub-step 6.3b:* Provide wide-column presets for RevDash, MegaLogViewer, and TunerStudio using stable names for Time, RPM, Speed, TPS, Load, MAP, MAF, ECT, trims, O2, voltage, and diagnostics.
-  - *Sub-step 6.3c:* Convert values from canonical SI at export time and include selected units in headers/metadata.
-  - *Sub-step 6.3d:* Export through a temporary file and rename only after successful completion; cancellation must leave the original session unchanged.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R csv_export --output-on-failure` against golden metric/imperial fixtures.
+  * `MetricId`;
+  * `TelemetrySample`;
+  * `SampleQuality`;
+  * `DtcRecord`;
+  * `FreezeFrame`;
+  * `EcuMetadata`;
+  * `DiagnosticFinding`;
+  * `Severity`;
+  * `TelemetrySnapshot`.
+* [x] Initial metric catalog includes:
 
-### Feature 7: Stage 7 — Headless CLI and Backend Acceptance
-- **Step 7.1: Build the diagnostic CLI**
-  - *Sub-step 7.1a:* Add commands for `sources`, `live`, `scan`, `identify`, `simulate`, `record`, `playback`, `export`, and guarded `clear`.
-  - *Sub-step 7.1b:* Support human-readable output and line-delimited JSON output without changing engine behavior.
-  - *Sub-step 7.1c:* Use exit codes 0 success, 2 usage, 3 connection, 4 protocol, 5 safety rejection, and 6 storage/database failure.
-  - *Sub-step 7.1d:* Handle Ctrl+C through cooperative engine shutdown, session finalization, source disconnect, and thread joins.
-  - *Sub-step 7.1e:* Require the Mode 04 confirmation token and explicit `--acknowledge-data-loss` flag; do not provide a force override for movement or stale speed.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R cli --output-on-failure`.
+  * RPM;
+  * speed;
+  * throttle;
+  * MAP;
+  * MAF;
+  * calculated load;
+  * timing;
+  * coolant;
+  * STFT/LTFT;
+  * ambient temperature;
+  * fuel level;
+  * control-module voltage;
+  * supported O2 channels.
+* [x] Add monotonic/system clock abstraction and deterministic manual clock for tests where needed.
 
-- **Step 7.2: Validate the complete backend flow**
-  - *Sub-step 7.2a:* Run synthetic healthy, misfire, vacuum leak, thermostat, noise, and dropout scenarios through scheduling, decoding, rules, recording, playback, and export.
-  - *Sub-step 7.2b:* Verify the source/pipeline hot path processes 100,000 prepared telemetry packets with zero allocations after warm-up.
-  - *Sub-step 7.2c:* Verify 5× playback of a 50-response/second session produces no pipeline drops on the reference Windows machine.
-  - *Sub-step 7.2d:* Confirm shutdown completes within two seconds with an active source, recorder, pending diagnostic request, or paused playback.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-release -L backend_e2e --output-on-failure`.
+### Tests
 
-### Feature 8: Stage 8 — Qt 6/QML Desktop Interface
-- **Step 8.1: Build the Qt application shell and adapter**
-  - *Sub-step 8.1a:* Create `AppController`, `TelemetryModel`, `DtcModel`, `FindingModel`, `SessionModel`, and `SourceModel` as the only QML-facing C++ layer.
-  - *Sub-step 8.1b:* Poll immutable engine snapshots at 20 Hz and batch chart updates at 10 Hz; never emit a Qt signal for every raw packet.
-  - *Sub-step 8.1c:* Keep QML and all QObject mutation on the main thread; post commands into `EngineService`.
-  - *Sub-step 8.1d:* Register the UI through `qt_add_qml_module` and use Qt Graphs 2D for telemetry lines. [Qt QML CMake integration](https://doc.qt.io/qt-6/qtqml-cmake-integration.html) [Qt Graphs](https://doc.qt.io/qt-6/qtgraphs-index.html)
-  - *Sub-step 8.1e:* Add dark/light themes, scalable typography, keyboard navigation, accessible names, stale-data styling, and metric/imperial preferences.
-  - *Verification Criteria:* Run `cmake --build --preset windows-msvc-debug --target revdash_app_qmllint`, then `ctest --preset windows-msvc-debug -R ui_shell --output-on-failure`.
+* Error/result success and failure behavior.
+* Stable error-code mapping.
+* Payload-cap rejection at 4096+ bytes.
+* Boundary payload acceptance.
+* `EcuAddress` equality/hash semantics.
+* Metric catalog uniqueness.
+* Timestamp semantics.
+* Manual clock advancement.
+* Sample quality construction and transitions.
 
-- **Step 8.2: Implement Connect workspace**
-  - *Sub-step 8.2a:* Present ELM327 and Synthetic sources on Windows; add Playback entry points from the Sessions workspace.
-  - *Sub-step 8.2b:* For ELM327 show refreshed COM devices, friendly labels, baud selection, connection state, initialization progress, measured latency, reconnect attempts, and actionable errors.
-  - *Sub-step 8.2c:* For simulation expose healthy/scenario presets and deterministic seed before connection.
-  - *Sub-step 8.2d:* Disable source changes while a guarded clear is awaiting confirmation; otherwise disconnect cleanly before switching.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R connect_workspace --output-on-failure`.
+### Verification
 
-- **Step 8.3: Implement Live Dashboard workspace**
-  - *Sub-step 8.3a:* Show primary RPM, speed, throttle, coolant, load, MAP, MAF, trims, and voltage cards/gauges.
-  - *Sub-step 8.3b:* Provide selectable 10-second, 30-second, and 120-second graphs without copying unbounded session history into QML.
-  - *Sub-step 8.3c:* Display achieved update rate, sample age, supported/unsupported state, drop counter, and source latency.
-  - *Sub-step 8.3d:* Apply unit conversion only in presentation; rules and recorded canonical values remain SI.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R dashboard_workspace --output-on-failure`, including stale and unsupported metrics.
+```text
+ctest --preset windows-msvc-debug -R core_types --output-on-failure
+```
 
-- **Step 8.4: Implement Diagnostics workspace**
-  - *Sub-step 8.4a:* Add active/pending scans, severity grouping, descriptions, likely failure points, ECU metadata, and freeze-frame evidence.
-  - *Sub-step 8.4b:* Display heuristic findings separately from ECU-reported DTCs, including evidence values and active/resolved state.
-  - *Sub-step 8.4c:* Add an advanced raw-message trace with bounded retention, pause, copy, and filter controls.
-  - *Sub-step 8.4d:* Implement Mode 04 as prepare → evidence review → explicit second confirmation → progress → rescan result; surface every safety rejection.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R diagnostics_workspace --output-on-failure`.
+---
 
-- **Step 8.5: Implement Simulator workspace**
-  - *Sub-step 8.5a:* Add engine start/stop, throttle, ambient temperature, seed, misfire selection, vacuum leak, thermostat fault, noise, and dropout controls.
-  - *Sub-step 8.5b:* Show raw physics state separately from noisy sensor output.
-  - *Sub-step 8.5c:* Disable controls for non-synthetic sources and preserve selected values only as local settings.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R simulator_workspace --output-on-failure`.
+## Step 1.3: Define asynchronous `IDataSource` contract
 
-- **Step 8.6: Implement Sessions and Settings/DTC Lookup workspaces**
-  - *Sub-step 8.6a:* List sessions with timestamp, duration, source, VIN, DTC/finding count, completion state, and file size.
-  - *Sub-step 8.6b:* Add play, pause, frame-step, scrub, speed selection, progress, data-loss warnings, recovery, and CSV export.
-  - *Sub-step 8.6c:* Add settings for units, theme, default recording path, chart window, serial defaults, and diagnostics explanation level.
-  - *Sub-step 8.6d:* Add offline DTC exact/prefix/text search with severity and likely failure points.
-  - *Sub-step 8.6e:* Store settings locally under `QStandardPaths::AppConfigLocation` and sessions under a user-selectable directory; uninstall must not remove sessions.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-debug -R "sessions_workspace|settings_workspace" --output-on-failure`.
+* [x] Define pure virtual `IDataSource`.
+* [x] Contract covers:
 
-- **Step 8.7: Validate UI performance and end-to-end navigation**
-  - *Sub-step 8.7a:* Run the synthetic source at full configured rates while navigating all workspaces and recording.
-  - *Sub-step 8.7b:* Require p95 engine-to-visible-snapshot latency below 100 ms and no main-thread operation longer than 16 ms on the reference Windows machine.
-  - *Sub-step 8.7c:* Test connection loss, malformed data, unsupported PIDs, recorder overrun, database absence, failed export, corrupt playback, and expired clear confirmation.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-release -L ui_e2e --output-on-failure`.
+  * connect;
+  * disconnect;
+  * reconnect;
+  * transmit;
+  * connection state;
+  * canonical message subscription.
+* [x] Lifecycle calls must not block the caller on device I/O.
+* [x] Source transport work occurs on a source-owned serialized worker/executor.
+* [x] Source completion/message callbacks execute on the source worker unless explicitly marshalled elsewhere.
+* [x] Define `DataSourceConfig` variant for:
 
-### Feature 9: Stage 9 — Windows v1 Packaging and Hardware Validation
-- **Step 9.1: Produce the Windows installer**
-  - *Sub-step 9.1a:* Build Release with MSVC 2022 x64 and dynamically linked Qt 6.11.x.
-  - *Sub-step 9.1b:* Use Qt’s QML deployment script/`windeployqt` to collect Qt DLLs, plugins, and QML modules; explicitly stage non-Qt DLLs and the DTC database. [Qt Windows deployment](https://doc.qt.io/qt-6/windows-deployment.html)
-  - *Sub-step 9.1c:* Use CPack’s WiX generator to create an unsigned x64 MSI with Start Menu entry, uninstall support, version metadata, and license notices. [CPack generators](https://cmake.org/cmake/help/latest/manual/cpack-generators.7.html)
-  - *Sub-step 9.1d:* Chain the official Visual C++ Redistributable rather than distributing compiler runtime DLLs copied from the development machine.
-  - *Sub-step 9.1e:* Install application files read-only under Program Files and keep settings/sessions entirely in user locations.
-  - *Verification Criteria:* Run `cmake --build --preset windows-msvc-release --target package`, then install/uninstall the MSI in a clean Windows sandbox.
+  * Serial;
+  * Synthetic;
+  * Playback;
+  * SocketCAN.
+* [x] Disconnect is idempotent.
+* [x] In-flight operations terminate with `Core.Cancelled` during intentional shutdown/source replacement.
+* [x] Preserve connection configuration required for reconnect.
+* [x] Add move-only RAII subscription token with thread-safe unregistration.
+* [x] Reject new transmissions when source state does not permit them.
 
-- **Step 9.2: Validate real ELM327 hardware**
-  - *Sub-step 9.2a:* Test one USB serial and one Bluetooth Classic SPP adapter against the same driver.
-  - *Sub-step 9.2b:* Capture the initialization transcript, capability bitmap, measured rates, adaptive degradation, reconnect after unplug, and a 15-minute live session.
-  - *Sub-step 9.2c:* Validate Modes 03/07, Mode 02 where supported, Mode 09 metadata, recording, playback, and CSV export.
-  - *Sub-step 9.2d:* Validate real Mode 04 only on a stationary vehicle and only after explicit owner approval; otherwise validate the full guarded exchange against the fake serial ECU and synthetic source.
-  - *Verification Criteria:* Run the documented commands in `tests/hardware/elm327_acceptance.md` and attach the resulting JSON report.
+### Tests
 
-- **Step 9.3: Establish the Windows release gate**
-  - *Sub-step 9.3a:* Configure, build, test, package, and archive test reports in Windows CI.
-  - *Sub-step 9.3b:* Require all unit/integration/UI tests, DTC release database validation, installer smoke test, license inventory, and hardware checklist before tagging Windows v1.
-  - *Sub-step 9.3c:* Document that code signing and automatic update delivery remain out of scope.
-  - *Verification Criteria:* Run `ctest --preset windows-msvc-release --output-on-failure` followed by the packaging job.
+* Connect/disconnect lifecycle state transitions.
+* Double disconnect.
+* Cancellation of in-flight requests.
+* Transmit rejection outside `Ready`.
+* Callback thread ownership.
+* Subscription destruction/unregistration.
+* Reconnect configuration preservation.
+* Source destruction with pending callbacks.
+* No callback after subscriber lifetime ends.
 
-### Feature 10: Stage 10 — Linux SocketCAN and DEB Release
-- **Step 10.1: Implement native SocketCAN**
-  - *Sub-step 10.1a:* Add a Linux-only `SocketCanDataSource` using non-blocking `AF_CAN`/`CAN_RAW` sockets bound to a configured `can0` or `vcan0` interface. SocketCAN is the Linux kernel’s native CAN socket interface. [Linux SocketCAN documentation](https://www.kernel.org/doc/html/latest/networking/)
-  - *Sub-step 10.1b:* Apply OBD request/response CAN filters, preserve CAN IDs as ECU addresses, and pass frames through the platform-neutral ISO-TP codec.
-  - *Sub-step 10.1c:* Handle interface absence, link-down, socket errors, malformed frames, reconnect, and application shutdown without attempting privileged interface configuration.
-  - *Sub-step 10.1d:* Keep a Windows factory stub that reports `Core.UnsupportedPlatform` without linking Linux headers.
-  - *Verification Criteria:* Run `ctest --preset linux-gcc-debug -R "socketcan|isotp" --output-on-failure` with `vcan0`.
+### Verification
 
-- **Step 10.2: Add Linux UI integration**
-  - *Sub-step 10.2a:* Show SocketCAN only on Linux and enumerate available CAN interfaces.
-  - *Sub-step 10.2b:* Reuse all dashboard, diagnostic, recorder, playback, and export models without Linux-specific QML branches beyond source configuration.
-  - *Sub-step 10.2c:* Add user guidance when an interface exists but is down or lacks system configuration.
-  - *Verification Criteria:* Run `ctest --preset linux-gcc-debug -R linux_ui --output-on-failure`.
+```text
+ctest --preset windows-msvc-debug -R data_source_contract --output-on-failure
+```
 
-- **Step 10.3: Produce and validate the DEB package**
-  - *Sub-step 10.3a:* Add CPack DEB metadata, desktop entry, icons, runtime dependencies, DTC database, license notices, and uninstall-safe user-data behavior.
-  - *Sub-step 10.3b:* Do not grant elevated permissions or bring CAN interfaces up from the application; document `vcan0` and physical CAN setup separately.
-  - *Sub-step 10.3c:* Add Ubuntu CI for GCC/Clang builds, sanitizers, vcan integration, QML tests, and package installation.
-  - *Verification Criteria:* Run `cmake --build --preset linux-gcc-release --target package`, install the DEB on a clean supported Ubuntu VM, and execute the vcan end-to-end scenario.
+---
 
-- **Step 10.4: Complete cross-platform acceptance**
-  - *Sub-step 10.4a:* Replay identical session fixtures on Windows and Linux and require equivalent decoded metrics, DTCs, findings, and exports.
-  - *Sub-step 10.4b:* Confirm platform-specific sources share the same `IDataSource`, scheduler, protocol, diagnostics, and session contracts.
-  - *Sub-step 10.4c:* Record any floating-point tolerance differences explicitly; no platform may change DTC or rule outcomes.
-  - *Verification Criteria:* Run all Windows and Linux release presets and compare golden cross-platform artifacts.
+## Step 1.4: Implement bounded pipelines and coherent telemetry store
+
+* [x] Wrap `boost::lockfree::spsc_queue` in project-owned bounded SPSC abstraction.
+* [x] Configure default capacities:
+
+  * 1024 source → engine;
+  * 2048 engine → recorder.
+* [x] Implement non-blocking overflow/drop counters.
+* [x] Never silently overwrite queue contents.
+* [x] Define fixed-size/fixed-capacity hot-path packet representations where practical.
+* [x] Implement coherent latest telemetry store keyed by `MetricId`.
+* [x] Use synchronization that guarantees value, timestamp, and quality originate from the same update.
+* [x] Provide efficient complete `TelemetrySnapshot` reads.
+* [x] Avoid steady-state heap allocation inside SPSC enqueue/dequeue operations.
+* [x] Instrument store lock contention rather than prematurely replacing correct synchronization with custom lock-free code.
+* [x] Create initial `APP.md` after these ownership/data-flow contracts are implemented.
+* [x] Record in `APP.md`:
+
+  * core/UI boundary;
+  * source ownership;
+  * worker responsibilities;
+  * queue topology;
+  * canonical data flow;
+  * source switching rules.
+
+### Tests
+
+* FIFO ordering.
+* Capacity boundary.
+* Overflow/drop accounting.
+* Producer/consumer stress test.
+* No data corruption under sustained SPSC use.
+* Coherent snapshot reads during concurrent updates.
+* Snapshot contains matching value/timestamp/quality tuples.
+* Queue teardown under active producer/consumer.
+* No steady-state queue allocation after initialization.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R "spsc|latest_store" --output-on-failure
+```
+
+---
+
+# Feature 2: Stage 2 — SAE J1979 Protocol and Telemetry Decoding
+
+## Step 2.1: Build table-driven Mode 01 PID catalog
+
+* [x] Define descriptor table containing:
+
+  * PID;
+  * expected response length;
+  * canonical SI unit;
+  * scheduler priority;
+  * decoder;
+  * valid bounds;
+  * stale policy.
+* [x] Decode:
+
+  * RPM;
+  * speed;
+  * coolant;
+  * calculated load;
+  * throttle;
+  * fuel trims;
+  * MAP;
+  * MAF;
+  * timing advance;
+  * ambient temperature;
+  * fuel level;
+  * module voltage.
+* [x] Decode Mode 01 supported-PID bitmaps:
+
+  * `00`;
+  * `20`;
+  * `40`;
+  * later ranges when supported by catalog.
+* [x] Build dynamic query filter from supported bitmap results.
+* [x] Normalize supported narrowband/wideband O2 data into typed metrics without pretending unsupported sensor representations are equivalent.
+* [x] Reject:
+
+  * truncated payloads;
+  * incorrect service responses;
+  * unexpected PID;
+  * negative responses;
+  * invalid lengths;
+  * impossible decoded values.
+
+### Tests
+
+* Published/known vectors for every decoder.
+* Minimum/maximum encoded values.
+* Supported bitmap interpretation.
+* Unsupported PID filtering.
+* Truncated responses.
+* Wrong response mode.
+* Wrong PID echo.
+* `0x7F` negative response.
+* Invalid/out-of-range result classification.
+* Multiple O2 sensor layouts.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R mode01 --output-on-failure
+```
+
+---
+
+## Step 2.2: Implement diagnostic services and DTC decoding
+
+* [x] Decode Mode 03 stored DTC responses.
+* [x] Decode Mode 07 pending DTC responses.
+* [x] Preserve ECU source for every DTC.
+* [x] Filter `0000` padding.
+* [x] Deduplicate only equivalent records from the same ECU/category while preserving multi-ECU provenance.
+* [x] Implement SAE DTC bitfield conversion to `P/C/B/U` codes.
+* [x] Implement Mode 02 frame-zero freeze-frame extraction.
+* [x] Reuse Mode 01 PID decoders for supported freeze-frame PIDs.
+* [x] Format Mode 04 clear request.
+* [x] Parse positive response `0x44`.
+* [x] Parse and classify negative responses.
+* [x] Implement Mode 09:
+
+  * VIN;
+  * calibration ID;
+  * CVN.
+* [x] Validate VIN length/content.
+* [x] Preserve ECU source for metadata.
+* [x] Keep J1979 multi-record/message sequencing conceptually separate from underlying ISO-TP transport segmentation.
+
+### Tests
+
+* Stored DTC decoding.
+* Pending DTC decoding.
+* `P/C/B/U` conversion vectors.
+* Padding filtering.
+* Multi-ECU duplicate behavior.
+* Freeze-frame decoding.
+* Missing/unsupported freeze-frame PIDs.
+* Mode 04 positive/negative responses.
+* Valid/invalid VIN.
+* Multi-record CALID/CVN.
+* Malformed Mode 09 payloads.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R "dtc_codec|mode02|mode04|mode09" --output-on-failure
+```
+
+---
+
+## Step 2.3: Implement platform-neutral raw ISO-TP trace codec
+
+This codec is a protocol utility, **not** the normal ELM327 or Linux production transport.
+
+* [ ] Decode/represent:
+
+  * SF;
+  * FF;
+  * CF;
+  * FC.
+* [ ] Support 11-bit and 29-bit CAN identifiers in trace metadata.
+* [ ] Implement deterministic reassembly keyed by source/destination addressing.
+* [ ] Track:
+
+  * expected sequence;
+  * rollover;
+  * declared length;
+  * timeout;
+  * malformed sequences.
+* [ ] Reject payloads exceeding application limits.
+* [ ] Implement fixture helpers for producing known ISO-TP frame sequences.
+* [ ] Keep codec independent of Windows/Linux APIs.
+* [ ] Explicitly document:
+
+  * ELM327 owns normal transport flow control;
+  * Linux `CAN_ISOTP` owns production segmentation/reassembly.
+
+### Tests
+
+* Single-frame payload.
+* Multi-frame payload.
+* Sequence rollover.
+* Missing CF.
+* Duplicate CF.
+* Incorrect sequence.
+* Timeout.
+* Invalid FF length.
+* FC parsing.
+* 11-bit and 29-bit trace metadata.
+* Maximum accepted payload.
+* Oversized payload rejection.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R isotp_trace --output-on-failure
+```
+
+---
+
+## Step 2.4: Add metric aggregation and quality tracking
+
+* [ ] Implement rolling:
+
+  * min;
+  * max;
+  * mean;
+  * median where needed by rules;
+  * time-window views.
+* [ ] Use monotonic time.
+* [ ] Implement:
+
+  * `Valid`;
+  * `Stale`;
+  * `Unsupported`;
+  * `Dropped`;
+  * `Invalid`.
+* [ ] Define per-metric stale thresholds.
+* [ ] Reset rolling state after:
+
+  * source switch;
+  * playback seek;
+  * engine epoch change.
+* [ ] Prevent pre-reset samples from leaking into new diagnostic windows.
+
+### Tests
+
+* Rolling aggregation.
+* Window expiry.
+* Irregular sample timestamps.
+* Stale classification.
+* Unsupported metrics.
+* Dropped/invalid propagation.
+* Epoch reset.
+* Seek reset.
+* Median behavior with deterministic fixtures.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R metric_aggregator --output-on-failure
+```
+
+---
+
+# Feature 3: Stage 3 — Synthetic Powertrain and Procedural Faults
+
+## Step 3.1: Implement deterministic powertrain model
+
+* [ ] Define `SimulationConfig`:
+
+  * engine characteristics;
+  * vehicle inertia;
+  * drag;
+  * rolling resistance;
+  * wheel radius;
+  * ambient temperature;
+  * deterministic seed.
+* [ ] Use fixed 10 ms physics timestep independent of UI frame rate.
+* [ ] Model torque-balance RPM dynamics.
+* [ ] Add PI idle control.
+* [ ] Add redline limiter.
+* [ ] Model basic drivetrain speed.
+* [ ] Model MAP from throttle/load.
+* [ ] Model MAF from airflow/volumetric efficiency.
+* [ ] Model thermal behavior:
+
+  * cold start;
+  * combustion heating;
+  * thermostat behavior;
+  * fan hysteresis.
+* [ ] Maintain deterministic output for identical configuration/input sequence.
+
+### Tests
+
+* Same seed/input produces identical output.
+* Fixed-step independence from caller update frequency.
+* Stable idle.
+* RPM response to throttle.
+* Redline enforcement.
+* Vehicle acceleration/deceleration.
+* MAP/MAF monotonic sanity.
+* Cold-start warmup.
+* Thermostat/fan hysteresis.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R synthetic_physics --output-on-failure
+```
+
+---
+
+## Step 3.2: Add deterministic fault and noise injection
+
+* [ ] Misfire scenario:
+
+  * torque drop;
+  * RPM instability;
+  * freeze-frame capture;
+  * configurable `P0300`–`P0304`.
+* [ ] Vacuum leak scenario:
+
+  * positive fuel trims at idle;
+  * load-dependent convergence;
+  * `P0171`.
+* [ ] Stuck-open thermostat scenario:
+
+  * slow/failed warmup;
+  * `P0128`.
+* [ ] Configurable Gaussian sensor noise.
+* [ ] Configurable packet dropout.
+* [ ] Use deterministic PRNG.
+* [ ] Keep true physical state separate from noisy sensor output.
+
+### Tests
+
+* Deterministic fault reproduction.
+* Fault activation/deactivation.
+* Expected DTC generation.
+* Freeze-frame capture timing.
+* Noise distribution within configured tolerance.
+* Deterministic dropout sequence.
+* Physical state remains unaffected by sensor noise.
+* Fault reset behavior.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R synthetic_faults --output-on-failure
+```
+
+---
+
+## Step 3.3: Expose simulation through `IDataSource`
+
+* [ ] Implement `SyntheticDataSource`.
+* [ ] Fulfil asynchronous lifecycle contract.
+* [ ] Simulate configurable latency.
+* [ ] Accept canonical OBD requests.
+* [ ] Produce canonical logical OBD responses.
+* [ ] Support Modes:
+
+  * 01;
+  * 02;
+  * 03;
+  * 04;
+  * 07;
+  * 9.
+* [ ] Maintain virtual ECU identity/state.
+* [ ] Expose safe simulation controls:
+
+  * start/stop;
+  * throttle;
+  * ambient temperature;
+  * fault injection;
+  * noise;
+  * packet loss.
+
+### Tests
+
+* `IDataSource` contract suite passes against synthetic implementation.
+* All supported modes.
+* Unsupported PID/service response.
+* Simulated latency.
+* Cancellation.
+* Virtual DTC clearing.
+* Deterministic source reset.
+* Multiple virtual ECU metadata records when configured.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R synthetic_source --output-on-failure
+```
+
+---
+
+# Feature 4: Stage 4 — ELM327, Scheduling, and Streaming Engine
+
+## Step 4.1: Build cross-platform serial transport abstraction
+
+* [ ] Implement `ISerialTransport` using Boost.Asio.
+* [ ] Support asynchronous:
+
+  * open;
+  * close;
+  * read;
+  * write;
+  * cancellation.
+* [ ] Implement Windows COM enumeration using SetupAPI.
+* [ ] Capture when available:
+
+  * COM identifier;
+  * friendly name;
+  * VID/PID;
+  * device description;
+  * Bluetooth SPP hints.
+* [ ] Treat USB serial and Bluetooth Classic SPP as serial transports after enumeration.
+* [ ] Support common baud rates:
+
+  * 9600;
+  * 38400;
+  * 115200.
+* [ ] Driver reports successful baud/configuration for higher-level persistence.
+* [ ] Handle unplug/device removal as asynchronous transport failure.
+
+### Tests
+
+Use fake serial transport plus platform-independent parser tests for:
+
+* open/close.
+* partial reads.
+* partial writes.
+* cancellation.
+* disconnect while read pending.
+* invalid COM name.
+* port disappearance.
+* baud configuration.
+* enumeration metadata normalization.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R serial_transport --output-on-failure
+```
+
+---
+
+## Step 4.2: Implement ELM327 driver and prompt synchronizer
+
+### Initialization
+
+Implement baseline initialization:
+
+```text
+ATZ
+ATE0
+ATL0
+ATS0
+ATH1
+ATCAF1
+ATSP0
+```
+
+* [ ] Wait for reset banner/prompt after `ATZ`.
+* [ ] Preserve headers with `ATH1`.
+* [ ] Keep CAN auto-formatting enabled with `ATCAF1`.
+* [ ] Probe adapter identity/capabilities where useful using safe commands such as `ATI`.
+* [ ] Obtain detected protocol information after successful vehicle communication.
+* [ ] Treat optional unsupported commands from imperfect clones separately from failure of required baseline behavior.
+* [ ] Do not disable headers merely to simplify parsing.
+
+### Command Synchronization
+
+* [ ] Single active ELM command.
+* [ ] Parse arbitrary serial chunks.
+* [ ] Handle:
+
+  * CR/LF;
+  * optional echoes;
+  * prompt `>`;
+  * status lines;
+  * blank lines.
+* [ ] Classify:
+
+  * `NO DATA`;
+  * `SEARCHING...`;
+  * `BUS INIT: ERROR`;
+  * `UNABLE TO CONNECT`;
+  * `STOPPED`;
+  * `?`;
+  * other known adapter status/error responses.
+* [ ] Use:
+
+  * bounded reset timeout;
+  * adaptive command timeout;
+  * bounded initialization retries.
+* [ ] Track:
+
+  * current protocol;
+  * adapter identity;
+  * RTT;
+  * EWMA RTT;
+  * timeout count;
+  * malformed response count;
+  * reconnect count.
+
+### OBD Normalization
+
+* [ ] Parse header/address information.
+* [ ] Preserve distinct ECU responses.
+* [ ] Support CAN 11-bit and 29-bit response identifiers.
+* [ ] Handle header forms produced by supported legacy OBD protocols where feasible.
+* [ ] Normalize ELM response data into `ObdMessage`.
+* [ ] Retain diagnostic raw lines for trace/debug events.
+* [ ] When ELM output exposes raw ISO-TP-framed CAN content, receive-side normalization may reuse the raw trace codec.
+* [ ] Never send custom FC frames in normal generic OBD operation.
+* [ ] Implement clean cancellation and transition to reconnect/fault states after hot unplug.
+
+### Tests
+
+Transcript fixtures must include:
+
+* genuine-style reset sequence.
+* common clone banners.
+* command echo enabled unexpectedly.
+* arbitrary serial chunk boundaries.
+* `>` split across chunks.
+* multiline CAN response.
+* two responding ECUs.
+* 11-bit CAN headers.
+* 29-bit CAN headers.
+* legacy protocol headers where supported.
+* Mode 09 multi-frame response.
+* `SEARCHING...` followed by valid response.
+* `NO DATA`.
+* `UNABLE TO CONNECT`.
+* malformed hex.
+* unsupported optional AT command.
+* timeout/retry.
+* hot unplug/cancellation.
+* confirmation that ECU identity survives normalization.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R elm327 --output-on-failure
+```
+
+---
+
+## Step 4.3: Implement adaptive PID scheduler
+
+* [ ] Build desired polling tiers rather than assuming fixed adapter throughput.
+* [ ] High priority:
+
+  * RPM;
+  * speed;
+  * throttle.
+* [ ] Medium priority:
+
+  * MAP;
+  * MAF;
+  * load;
+  * timing;
+  * active O2 channels.
+* [ ] Low priority:
+
+  * coolant;
+  * trims;
+  * ambient;
+  * fuel level;
+  * voltage.
+* [ ] Use supported-PID filter before scheduling.
+* [ ] Enforce ELM single-flight request behavior.
+* [ ] Use fair deadline-based ordering inside priority tiers.
+* [ ] Estimate sustainable dispatch budget from measured RTT.
+* [ ] Target maximum useful throughput while keeping estimated adapter/bus utilization below 80%.
+* [ ] Degrade low-priority polling first during congestion.
+* [ ] Degrade medium priority only when required.
+* [ ] Ramp recovery gradually after congestion.
+* [ ] Pause/drain streaming requests for diagnostic operations:
+
+  * 02;
+  * 03;
+  * 04;
+  * 07;
+  * 9.
+* [ ] Prevent diagnostic starvation.
+
+### Tests
+
+* Fairness.
+* Unsupported PIDs are never queried.
+* High-priority preference.
+* Single-flight enforcement.
+* Slow-adapter adaptation.
+* Fast-adapter recovery.
+* Queue congestion.
+* Low-tier degradation before higher tiers.
+* Diagnostic pause/drain/resume.
+* Timeout handling.
+* No starvation during sustained streaming.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R pid_scheduler --output-on-failure
+```
+
+---
+
+## Step 4.4: Assemble `EngineService` and explicit worker ownership
+
+* [ ] `EngineService` owns:
+
+  * active source;
+  * scheduler;
+  * decoder pipeline;
+  * telemetry store;
+  * diagnostic evaluator;
+  * session recorder coordination.
+* [ ] Active source owns its own transport worker/executor.
+* [ ] Engine owns processing `std::jthread`.
+* [ ] Recorder owns recording `std::jthread`.
+* [ ] Source callbacks enqueue canonical packets into source → engine SPSC.
+* [ ] Engine worker:
+
+  * consumes source messages;
+  * decodes;
+  * updates telemetry;
+  * evaluates rules;
+  * dispatches recorder records.
+* [ ] Implement safe UI/CLI → engine command queue for:
+
+  * connect;
+  * disconnect;
+  * scan;
+  * identify;
+  * clear preparation;
+  * clear confirmation;
+  * recording;
+  * playback;
+  * simulation controls.
+* [ ] Implement thread-safe event publication.
+* [ ] Implement exponential reconnect:
+
+  * 0.5s;
+  * 1s;
+  * 2s;
+  * 5s;
+  * maximum five automatic attempts.
+* [ ] Increment engine epoch on:
+
+  * source replacement;
+  * playback seek;
+  * state reset requiring telemetry invalidation.
+* [ ] Drain stale pipeline work during epoch transition.
+* [ ] Reject late responses belonging to an obsolete epoch.
+* [ ] Update `APP.md` with final worker and ownership architecture.
+
+### Tests
+
+* Full source → decode → store path.
+* Commands from another thread.
+* Reconnect schedule.
+* Reconnect cancellation.
+* Source switch.
+* Epoch invalidation.
+* Late packet rejection.
+* Queue drain.
+* Shutdown with pending source request.
+* Recorder worker shutdown.
+* No Qt dependencies in engine.
+* Concurrent snapshot reads while telemetry flows.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R engine_pipeline --output-on-failure
+```
+
+---
+
+# Feature 5: Stage 5 — Diagnostic Rules, DTC Database, and Safe Commands
+
+## Step 5.1: Implement rolling diagnostic evaluation
+
+All findings are explicitly heuristic/advisory rather than definitive mechanical diagnoses.
+
+* [ ] Implement rule applicability gates based on:
+
+  * required PIDs;
+  * sample quality;
+  * sample freshness;
+  * warmup/state conditions.
+* [ ] Implement timestamped rolling-window evaluator.
+* [ ] Reset incomplete windows on stale/invalid data.
+* [ ] Implement vacuum-leak heuristic using:
+
+  * idle-state gate;
+  * load gate;
+  * sustained positive LTFT;
+  * convergence under increased load.
+* [ ] Implement catalyst-efficiency heuristic only where supported O2 sensor topology/data makes the calculation meaningful.
+* [ ] Require suitable engine temperature and steady operating window.
+* [ ] Implement stuck-open thermostat advisory from cold-start/warmup behavior.
+* [ ] Implement conservative charging-voltage anomaly rule rather than assuming every vehicle uses fixed alternator voltage behavior.
+* [ ] Define rule thresholds in centralized configuration/constants with explanatory documentation.
+* [ ] Implement:
+
+  * finding deduplication;
+  * first/last seen;
+  * active/resolved state;
+  * evidence snapshot;
+  * rule identifier/version.
+* [ ] Require stable clear condition before automatically resolving findings.
+* [ ] Document limitations in `docs/diagnostic-rules.md`.
+
+### Tests
+
+* Every rule positive fixture.
+* Every rule negative fixture.
+* Boundary threshold behavior.
+* Missing PID.
+* Unsupported PID.
+* Stale samples.
+* Insufficient window duration.
+* Applicability gating.
+* Finding deduplication.
+* Evidence capture.
+* Resolution timing.
+* Epoch reset.
+* Smart-charging-like voltage fixture does not produce unjustified critical finding.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R diagnostic_rules --output-on-failure
+```
+
+---
+
+## Step 5.2: Build offline DTC database pipeline
+
+* [ ] Define expected external CSV fields:
+
+  * `code`;
+  * `description`;
+  * `severity`;
+  * `likely_failure_points`;
+  * `source_version`.
+* [ ] Validate:
+
+  * DTC format;
+  * severity enum;
+  * UTF-8;
+  * required fields;
+  * duplicate/conflicting rows;
+  * dataset version.
+* [ ] Generate versioned SQLite database.
+* [ ] Add indices appropriate for code and search.
+* [ ] Implement `revdash_dtc_importer`.
+* [ ] Implement read-only runtime lookup:
+
+  * exact code;
+  * prefix;
+  * normalized keyword search;
+  * unknown fallback.
+* [ ] Keep small legal fixture CSV/SQLite under tests.
+* [ ] Do not require production licensed data for unit/integration tests.
+* [ ] Release packaging must require explicitly supplied/generated production database.
+* [ ] Never package the fixture database as production data.
+* [ ] Do not commit production generated DB unless its license explicitly permits this.
+
+### Tests
+
+* Valid dataset import.
+* Invalid DTC code.
+* Invalid UTF-8.
+* Duplicate conflict.
+* Missing field.
+* Unsupported schema/source version.
+* Exact lookup.
+* Prefix search.
+* Keyword search.
+* Unknown code.
+* Read-only runtime behavior.
+* Fixture and production paths cannot be confused by release configuration.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R dtc_database --output-on-failure
+```
+
+---
+
+## Step 5.3: Implement scans, metadata, and guarded Mode 04 workflow
+
+### Scan
+
+* [ ] Pause streaming scheduler.
+* [ ] Query Mode 03 + Mode 07.
+* [ ] Enrich DTCs from local DB.
+* [ ] Query available Mode 02 freeze frame.
+* [ ] Resume scheduler.
+* [ ] Preserve ECU source.
+
+### Metadata
+
+* [ ] Query Mode 09 VIN/CALID/CVN.
+* [ ] Preserve per-ECU provenance.
+* [ ] Tolerate partial support.
+
+### Mode 04 Preparation
+
+`prepareClearDtc()` succeeds only when:
+
+* [ ] active source is physical;
+* [ ] source is `Ready`;
+* [ ] no incompatible operation is active;
+* [ ] engine epoch remains stable;
+* [ ] vehicle speed sample exists;
+* [ ] speed quality is `Valid`;
+* [ ] speed sample is within defined freshness threshold;
+* [ ] speed ≤ 0.5 km/h.
+
+Reject:
+
+* playback;
+* synthetic user-facing clear;
+* stale speed;
+* unsupported speed;
+* invalid/dropped speed;
+* moving vehicle.
+
+Before producing token:
+
+* [ ] capture DTC/freeze-frame/evidence snapshot;
+* [ ] record that Mode 04 may erase emissions diagnostic information and reset readiness-related state;
+* [ ] generate single-use random confirmation token;
+* [ ] bind token to:
+
+  * source identity;
+  * engine epoch;
+  * preparation snapshot;
+  * expiration;
+  * vehicle identity when available.
+* [ ] expire token after 30 seconds.
+* [ ] invalidate token after any source/epoch/precondition change.
+
+### Mode 04 Confirmation
+
+* [ ] Revalidate safety state immediately before transmission.
+* [ ] Consume token atomically.
+* [ ] Send Mode 04.
+* [ ] Validate positive/negative response.
+* [ ] Wait a bounded post-clear settling delay.
+* [ ] Trigger automatic DTC rescan.
+* [ ] Record complete structured audit result.
+
+### Tests
+
+* Stored/pending scan.
+* Multi-ECU scan.
+* Partial Mode support.
+* Metadata enrichment.
+* Valid stationary clear preparation.
+* Moving rejection.
+* Stale-speed rejection.
+* Unsupported-speed rejection.
+* Playback rejection.
+* Synthetic rejection.
+* Token expiration.
+* Token reuse.
+* Token from old epoch.
+* Source switch after preparation.
+* Vehicle identity change when detectable.
+* Positive clear response.
+* Negative response.
+* Timeout.
+* Post-clear rescan.
+* Audit record contents.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R diagnostic_service --output-on-failure
+```
+
+---
+
+# Feature 6: Stage 6 — Session Recording, Playback, and Export
+
+## Step 6.1: Implement versioned JSONL recording
+
+* [ ] Define Schema v1 record types:
+
+  * header;
+  * OBD message;
+  * telemetry;
+  * DTC;
+  * diagnostic finding;
+  * Mode 04 audit;
+  * ECU metadata;
+  * data-loss marker;
+  * footer.
+* [ ] Header includes:
+
+  * UUID;
+  * application version;
+  * schema version;
+  * UTC start;
+  * active source type;
+  * adapter/protocol metadata when known;
+  * vehicle metadata;
+  * simulation configuration/seed when applicable.
+* [ ] Use integer `elapsed_us`.
+* [ ] Raw logical payloads use uppercase hex.
+* [ ] Preserve ECU identity.
+* [ ] Use streaming/preallocated serializer path.
+* [ ] Benchmark steady telemetry serialization for unnecessary allocations.
+* [ ] Record to `.partial`.
+* [ ] On successful completion:
+
+  * write footer;
+  * flush;
+  * close;
+  * atomically rename to `.jsonl`.
+* [ ] Leave recoverable `.partial` after abnormal termination.
+* [ ] Record explicit data-loss marker if recorder queue drops records.
+* [ ] Document format in `docs/session-format.md`.
+
+### Tests
+
+* Every record type round trip.
+* Schema/version field.
+* Unicode metadata.
+* Stable integer timestamp formatting.
+* Hex encoding.
+* ECU identity persistence.
+* Successful finalization.
+* Interrupted `.partial`.
+* Queue overflow/data-loss marker.
+* Invalid output path.
+* Disk write failure simulation.
+* Footer statistics.
+* Deterministic serialization of canonical fixtures.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R session_recorder --output-on-failure
+```
+
+---
+
+## Step 6.2: Implement deterministic playback source
+
+* [ ] Implement `PlaybackDataSource`.
+* [ ] Stream recorded `ObdMessage` records through normal decode/rule pipelines.
+* [ ] Controls:
+
+  * Play;
+  * Pause;
+  * Step;
+  * Stop;
+  * Seek;
+  * 0.5×;
+  * 1×;
+  * 2×;
+  * 5×.
+* [ ] Create `.ridx` sidecar.
+* [ ] Add approximately 1-second seek checkpoints.
+* [ ] Index contains source file fingerprint/schema information so stale index files are rejected/rebuilt.
+* [ ] On seek:
+
+  * increment engine epoch;
+  * reset rolling state;
+  * locate target minus required diagnostic-rule warmup window;
+  * silently fast-forward to target;
+  * publish rebuilt state.
+* [ ] Derive warmup duration from configured maximum active rule window rather than hardcoding it.
+* [ ] Re-evaluate current telemetry/findings using current rule implementation.
+* [ ] Expose historical recorded findings/audits separately.
+* [ ] Validate:
+
+  * schema compatibility;
+  * monotonic elapsed timestamps;
+  * record structure;
+  * hex payloads;
+  * required fields.
+* [ ] Playback cannot invoke physical Mode 04.
+
+### Tests
+
+* 1× deterministic timing using manual clock.
+* Pause/resume.
+* Step.
+* Each speed multiplier.
+* Seek.
+* Stale index rebuild.
+* Rule-state warmup.
+* Corrupt line.
+* Unsupported schema.
+* Non-monotonic time.
+* Truncated session.
+* Historical vs re-evaluated finding separation.
+* Mode 04 unavailable in playback.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R session_playback --output-on-failure
+```
+
+---
+
+## Step 6.3: Implement automotive CSV export
+
+* [ ] Implement configurable 10 Hz telemetry timeline.
+* [ ] Use sample-and-hold only while previous sample remains within that metric's valid hold/stale interval.
+* [ ] Output empty/missing value rather than holding stale data indefinitely.
+* [ ] Use locale-independent decimal formatting.
+* [ ] Escape CSV correctly.
+* [ ] Implement:
+
+  * RevDash export;
+  * MegaLogViewer-compatible preset;
+  * TunerStudio-compatible preset.
+* [ ] Validate external presets against currently documented import expectations before freezing headers.
+* [ ] Apply Metric/Imperial conversion during export only.
+* [ ] Tag units in headers/metadata.
+* [ ] Export via temporary file followed by atomic replacement/rename.
+
+### Tests
+
+* Exact 10 Hz timeline.
+* Sample-and-hold.
+* Stale cutoff.
+* Missing values.
+* Unit conversion.
+* Locale independence.
+* CSV escaping.
+* Golden output fixtures for each preset.
+* Export failure.
+* Atomic destination behavior.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R csv_export --output-on-failure
+```
+
+---
+
+# Feature 7: Stage 7 — Headless CLI and Backend Acceptance
+
+## Step 7.1: Build diagnostic CLI
+
+* [ ] Implement CLI11 commands:
+
+  * `sources`;
+  * `live`;
+  * `scan`;
+  * `identify`;
+  * `simulate`;
+  * `record`;
+  * `playback`;
+  * `export`;
+  * `clear`.
+* [ ] Human-readable table output.
+* [ ] Machine-readable JSON Lines output.
+* [ ] Standard exit codes:
+
+  * 0 success;
+  * 2 usage;
+  * 3 connection;
+  * 4 protocol;
+  * 5 safety rejection;
+  * 6 I/O.
+* [ ] Graceful console interruption.
+* [ ] `clear` remains a same-process guarded interaction:
+
+  1. prepare;
+  2. display destructive-effects warning and token;
+  3. require explicit acknowledgement;
+  4. require token confirmation;
+  5. execute confirmation while original engine/source context remains active.
+* [ ] Do not weaken Mode 04 safeguards for CLI automation.
+
+### Tests
+
+* Argument parsing for every command.
+* Exit-code mapping.
+* JSONL output.
+* Human tables.
+* Simulated live/scan/identify flow.
+* Record/playback/export.
+* Invalid source.
+* Connection failure.
+* Ctrl+C shutdown path using testable signal abstraction.
+* Clear rejection.
+* Clear confirmation token mismatch.
+* Successful simulated backend clear path at service-test level without bypassing physical-source production guard.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R cli --output-on-failure
+```
+
+---
+
+## Step 7.2: Validate complete backend
+
+* [ ] Execute synthetic end-to-end scenarios:
+
+  * normal engine;
+  * vacuum leak;
+  * misfire;
+  * thermostat;
+  * noisy/dropout stream.
+* [ ] Validate complete:
+  source → scheduler → decoder → telemetry → rules → recorder.
+* [ ] Profile steady telemetry pipeline over at least 100,000 frames.
+* [ ] Confirm queue path does not allocate after initialization.
+* [ ] Investigate any significant unexpected telemetry hot-path allocation rather than enforcing impossible zero-allocation behavior on unrelated diagnostic events.
+* [ ] Validate 5× playback at equivalent 250 packets/sec acceptance load with no queue drops on reference development hardware.
+* [ ] Validate bounded shutdown under active I/O.
+* [ ] Run Windows ASan core/integration tests.
+
+### Tests / Acceptance
+
+* Deterministic expected metrics/DTCs/findings.
+* Session replay reproduces expected state.
+* No SPSC drops at acceptance workload.
+* No ASan findings.
+* Engine shutdown target ≤2 seconds under controlled test load.
+* Memory remains bounded over sustained run.
+* No deadlock during source reconnect/switch/shutdown.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-release -L backend_e2e --output-on-failure
+cmake --build --preset windows-msvc-asan
+ctest --preset windows-msvc-asan --output-on-failure
+```
+
+---
+
+# Feature 8: Stage 8 — Qt 6/QML Desktop Interface
+
+## Step 8.1: Build Qt application shell, adapters, and chart primitive
+
+* [ ] Link UI only against required LGPL-compatible Qt modules.
+* [ ] Do not introduce Qt Graphs by default.
+* [ ] Implement:
+
+  * `AppController`;
+  * `TelemetryModel`;
+  * `DtcModel`;
+  * `FindingModel`;
+  * `SessionModel`;
+  * `SourceModel`.
+* [ ] All `QObject` mutations remain on main thread.
+* [ ] Engine commands remain asynchronous.
+* [ ] UI polls/consumes immutable telemetry snapshots at approximately 20 Hz.
+* [ ] Chart data batches update approximately 10 Hz.
+* [ ] Implement custom `TelemetryChartItem` using Qt Quick scene graph.
+* [ ] Bound chart history memory.
+* [ ] Transfer chart data safely between GUI-side state and scene-graph rendering.
+* [ ] Register QML module with `qt_add_qml_module`.
+* [ ] Add:
+
+  * dark/light theme;
+  * scalable automotive layout;
+  * Metric/Imperial presentation binding.
+* [ ] Keep strings translation-ready.
+
+### Tests
+
+* Controller thread affinity.
+* Model insert/update/reset.
+* Engine event marshaling.
+* No QObject mutation from engine/source workers.
+* Chart history bounds.
+* Chart accepts deterministic sample series.
+* Unit conversion binding.
+* Theme switching.
+* QML component load smoke test.
+* `qmllint`.
+
+### Verification
+
+```text
+cmake --build --preset windows-msvc-debug --target revdash_app_qmllint
+ctest --preset windows-msvc-debug -R ui_shell --output-on-failure
+```
+
+---
+
+## Step 8.2: Implement Connect workspace
+
+* [ ] Physical ELM327 USB/BT Classic source selection.
+* [ ] Synthetic source selection.
+* [ ] COM dropdown.
+* [ ] Refresh.
+* [ ] Baud selector.
+* [ ] Connection status.
+* [ ] Adapter/protocol identity.
+* [ ] RTT/EWMA.
+* [ ] retry/error counters.
+* [ ] Simulation presets/seed before connection.
+* [ ] Disable incompatible source operations during guarded clear confirmation.
+* [ ] Present actionable connection errors.
+
+### Tests
+
+* Source enumeration model.
+* Port refresh.
+* Connect/disconnect state UI.
+* Failed connection.
+* Reconnect state.
+* Simulation configuration.
+* Source switch guard during clear.
+* Metric/imperial setting does not affect core source configuration.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R connect_workspace --output-on-failure
+```
+
+---
+
+## Step 8.3: Implement Live Dashboard workspace
+
+* [ ] Primary telemetry:
+
+  * RPM;
+  * speed;
+  * throttle;
+  * coolant;
+  * load;
+  * MAP;
+  * MAF;
+  * trims;
+  * voltage.
+* [ ] Rolling charts:
+
+  * 10s;
+  * 30s;
+  * 120s.
+* [ ] Telemetry-health display:
+
+  * actual poll rate;
+  * RTT;
+  * sample age;
+  * queue drops;
+  * unsupported/stale indicators.
+* [ ] Apply unit conversion only in presentation layer.
+* [ ] Clearly distinguish stale/unsupported metrics from numeric zero.
+
+### Tests
+
+* Snapshot binding.
+* Stale state.
+* Unsupported state.
+* Chart range switching.
+* Unit conversion.
+* Drop-counter display.
+* No unbounded graph history.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R dashboard_workspace --output-on-failure
+```
+
+---
+
+## Step 8.4: Implement Diagnostics workspace
+
+* [ ] Stored/pending DTC groups.
+* [ ] ECU source.
+* [ ] DTC descriptions.
+* [ ] severity/advisory presentation.
+* [ ] Freeze-frame inspector.
+* [ ] Heuristic finding panel:
+
+  * rule;
+  * status;
+  * evidence;
+  * limitations.
+* [ ] Bounded raw diagnostic terminal:
+
+  * pause;
+  * copy;
+  * hex filter.
+* [ ] Guarded Mode 04 dialog:
+
+  * precondition status;
+  * data/readiness-loss warning;
+  * confirmation token;
+  * countdown;
+  * result;
+  * automatic rescan result.
+
+### Tests
+
+* DTC grouping.
+* Multi-ECU source display.
+* Freeze-frame display.
+* Finding evidence.
+* Raw terminal bounds.
+* Clear button disabled when unsafe.
+* Token expiry UI.
+* Clear rejection.
+* Successful confirmation flow using mocked engine service.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R diagnostics_workspace --output-on-failure
+```
+
+---
+
+## Step 8.5: Implement Simulator workspace
+
+* [ ] Ignition/start controls.
+* [ ] Throttle.
+* [ ] Ambient temperature.
+* [ ] Fault injection.
+* [ ] Noise/dropout controls.
+* [ ] Display:
+
+  * true physical state;
+  * noisy OBD-observed state.
+* [ ] Disable simulator controls when a physical source is active.
+
+### Tests
+
+* Simulation command dispatch.
+* Fault toggles.
+* Seed handling.
+* True/noisy state distinction.
+* Physical-source lockout.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R simulator_workspace --output-on-failure
+```
+
+---
+
+## Step 8.6: Implement Sessions and Settings/DTC Lookup workspaces
+
+### Sessions
+
+* [ ] Session list.
+* [ ] Metadata.
+* [ ] timestamps.
+* [ ] source/vehicle.
+* [ ] DTC count.
+* [ ] file size.
+* [ ] recoverable `.partial` indication.
+* [ ] Playback controls.
+* [ ] Seek/scrub.
+* [ ] speed selection.
+* [ ] CSV export.
+
+### Settings & DTC Lookup
+
+* [ ] Metric/Imperial.
+* [ ] theme.
+* [ ] default session/export paths.
+* [ ] preferred connection parameters.
+* [ ] DTC exact lookup.
+* [ ] keyword search.
+* [ ] severity/likely-point display when supplied by licensed data.
+* [ ] Use `QSettings` for preferences.
+* [ ] Resolve files through appropriate `QStandardPaths` locations.
+* [ ] Never write user sessions/configuration into installation directory.
+
+### Tests
+
+* Session discovery.
+* `.partial` state.
+* Playback controls.
+* Export dialog.
+* Settings round trip.
+* Invalid stored path recovery.
+* DTC lookup.
+* Missing production DB user experience.
+* Unit/theme persistence.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-debug -R "sessions_workspace|settings_workspace" --output-on-failure
+```
+
+---
+
+## Step 8.7: Validate UI responsiveness and end-to-end navigation
+
+* [ ] Run full-throughput synthetic telemetry with recording active.
+* [ ] Navigate repeatedly through all six workspaces.
+* [ ] Instrument:
+
+  * engine snapshot age;
+  * controller processing;
+  * chart update work;
+  * visible UI latency.
+* [ ] Acceptance targets under defined reference workload:
+
+  * p95 telemetry-to-UI latency <100 ms;
+  * p95 main-thread update work <8 ms;
+  * p99 main-thread update work <16.7 ms;
+  * no sustained UI stall >250 ms.
+* [ ] Validate:
+
+  * disconnects;
+  * malformed packets;
+  * missing DTC DB;
+  * recorder errors;
+  * export failures;
+  * source reconnect;
+  * playback seek.
+* [ ] Do not fail acceptance because of an isolated OS scheduler outlier if percentile/budget criteria remain satisfied.
+
+### Tests / Acceptance
+
+* Automated navigation smoke.
+* Model stress fixtures.
+* Long chart history.
+* Source disconnect while changing workspace.
+* Recording while navigating.
+* Measured latency statistics against thresholds.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-release -L ui_e2e --output-on-failure
+```
+
+---
+
+# Feature 9: Stage 9 — Windows v1 Packaging and Hardware Validation
+
+## Step 9.1: Produce Windows MSI
+
+* [ ] Build Release with MSVC 2022 x64.
+* [ ] Use pinned Qt 6.11.2 baseline unless `MODERN.md`/plan is explicitly revised.
+* [ ] Run Qt deployment tooling to stage required dynamic Qt runtime components.
+* [ ] Deploy required MSVC runtime app-locally with the application package rather than assuming a CPack MSI can act as an external bootstrapper.
+* [ ] Configure CPack WiX 4.
+* [ ] Define stable MSI UpgradeCode.
+* [ ] Package:
+
+  * application;
+  * Qt runtime;
+  * required vcpkg runtime DLLs;
+  * production DTC DB;
+  * icons;
+  * license/notice files.
+* [ ] Install application binaries into read-only program location.
+* [ ] Store configuration/sessions under user-writable application data paths.
+* [ ] Add Start Menu shortcut.
+* [ ] Include version metadata.
+* [ ] No code signing in v1.
+* [ ] Release package must fail if production DTC DB is absent.
+* [ ] Do not fall back to fixture DB.
+* [ ] Generate/verify third-party license inventory.
+* [ ] Include applicable Qt open-source license/source-availability notices for the exact distributed Qt build.
+* [ ] Keep GPL-only Qt modules out unless project licensing policy explicitly changes.
+* [ ] Document packaging licensing assumptions in `docs/licensing.md`.
+
+### Tests
+
+* Clean staging directory.
+* No debug DLLs.
+* No test DTC fixture.
+* Production DB present.
+* All required Qt plugins.
+* Application launches without developer environment.
+* User settings path writable.
+* Program installation directory not used for mutable data.
+* UpgradeCode remains stable across package rebuilds.
+
+### Verification
+
+```text
+cmake --build --preset windows-msvc-release --target package
+```
+
+Then install, launch, exercise basic simulation, uninstall, and reinstall in a clean Windows Sandbox/VM.
+
+---
+
+## Step 9.2: Validate real ELM327 hardware
+
+Use dedicated test hardware/vehicle and follow the guarded workflow.
+
+* [ ] Test physical USB ELM327-compatible adapter.
+* [ ] Test Bluetooth Classic SPP adapter.
+* [ ] Validate:
+
+  * port enumeration;
+  * initialization transcript;
+  * adapter identity;
+  * protocol detection;
+  * PID discovery;
+  * multiple ECU response preservation;
+  * scheduler adaptation;
+  * 15-minute sustained telemetry;
+  * hot-unplug recovery.
+* [ ] Validate:
+
+  * Mode 03;
+  * Mode 07;
+  * Mode 02;
+  * Mode 09;
+  * recording;
+  * playback;
+  * CSV export.
+* [ ] Validate Mode 04 only on a suitable stationary test vehicle with explicit operator confirmation and understanding of diagnostic/readiness data clearing.
+* [ ] Capture reproducible hardware test report.
+
+### Acceptance
+
+* No crashes/deadlocks.
+* No ECU identity loss in tested CAN responses.
+* Recovery after unplug.
+* Scheduler adapts to slow and faster adapters.
+* Recorded session replays successfully.
+* Guarded Mode 04 rejects unsafe states.
+
+### Verification
+
+Record results in:
+
+```text
+tests/hardware/elm327_acceptance.md
+```
+
+and archive the generated run report outside source control where appropriate.
+
+---
+
+## Step 9.3: Establish Windows release gate and CI
+
+* [ ] Configure GitHub Actions Windows workflow.
+* [ ] Restore pinned vcpkg dependencies.
+* [ ] Configure/build MSVC.
+* [ ] Run unit/integration tests.
+* [ ] Run appropriate ASan lane.
+* [ ] Validate DTC fixture tests.
+* [ ] Support release job requiring production DTC DB through approved external input.
+* [ ] Generate MSI.
+* [ ] Smoke-test staged application/package where CI environment permits.
+* [ ] Finalize release/hardware checklist.
+
+### Release Gate
+
+Require:
+
+* 100% required unit/integration tests passing;
+* no newly introduced compiler warnings;
+* no ASan failures;
+* production DTC DB integrity;
+* packaging dependency scan passing;
+* MSI smoke test passing;
+* hardware validation checklist completed for release candidates.
+
+### Verification
+
+```text
+ctest --preset windows-msvc-release --output-on-failure
+cmake --build --preset windows-msvc-release --target package
+```
+
+---
+
+# Feature 10: Stage 10 — Linux SocketCAN and DEB Release
+
+## Step 10.1: Implement native SocketCAN source using kernel ISO-TP
+
+* [ ] Add Linux CAN interface enumeration.
+* [ ] Implement bounded functional ECU discovery using `CAN_RAW` where required.
+* [ ] For standard 11-bit generic OBD discovery:
+
+  * transmit appropriate functional single-frame request;
+  * identify valid ECU responses;
+  * establish physical request/response address pairs.
+* [ ] Add corresponding 29-bit addressing support.
+* [ ] Open per-ECU `PF_CAN` / `SOCK_DGRAM` / `CAN_ISOTP` sockets for production diagnostic exchanges.
+* [ ] Let kernel handle:
+
+  * segmentation;
+  * reassembly;
+  * flow control;
+  * block size;
+  * STmin.
+* [ ] Configure appropriate ISO-TP socket options.
+* [ ] Route logical ISO-TP payloads into the same canonical J1979 decoder used by ELM/simulation/playback.
+* [ ] Use `CAN_RAW` only for:
+
+  * discovery;
+  * optional raw trace/monitoring.
+* [ ] Do not build a competing userspace production ISO-TP state machine.
+* [ ] Handle:
+
+  * interface down;
+  * socket error;
+  * ECU timeout;
+  * source disconnect;
+  * cancellation.
+* [ ] Runtime should not require root after the CAN interface has been configured by the system/user.
+* [ ] Windows build returns `Core.UnsupportedPlatform` for SocketCAN configuration.
+* [ ] Update `APP.md` transport architecture.
+* [ ] Update `MODERN.md` Linux kernel/toolchain requirements.
+
+### Tests
+
+Using `vcan0` and deterministic virtual ECU responders:
+
+* interface enumeration.
+* functional discovery.
+* 11-bit ECU mapping.
+* 29-bit ECU mapping.
+* single-frame request/response.
+* kernel multi-frame ISO-TP response.
+* multiple discovered ECUs.
+* timeout.
+* interface-down.
+* malformed discovery frame rejection.
+* source cancellation.
+* Windows unsupported-platform behavior.
+* canonical payload parity with ELM fixtures.
+
+### Verification
+
+```text
+ctest --preset linux-gcc-debug -R "socketcan|isotp" --output-on-failure
+```
+
+with configured `vcan0`.
+
+---
+
+## Step 10.2: Add Linux UI integration
+
+* [ ] Expose SocketCAN source only on supported Linux builds.
+* [ ] Interface selector.
+* [ ] Connection/state UI.
+* [ ] Clear error for:
+
+  * missing interface;
+  * down interface;
+  * no responding ECU.
+* [ ] Maintain all six workspaces.
+* [ ] Preserve same engine/UI contract as Windows.
+
+### Tests
+
+* Linux source model.
+* Interface selection.
+* Missing/down interface.
+* SocketCAN connection.
+* Workspace compatibility.
+* Source switching Synthetic ↔ SocketCAN.
+
+### Verification
+
+```text
+ctest --preset linux-gcc-debug -R linux_ui --output-on-failure
+```
+
+---
+
+## Step 10.3: Produce and validate DEB package and Linux CI
+
+* [ ] Configure Linux presets:
+
+  * `linux-gcc-debug`;
+  * `linux-gcc-release`;
+  * `linux-clang-sanitize`;
+  * optional core-only `linux-clang-tsan`.
+* [ ] Configure CPack DEB.
+* [ ] Package:
+
+  * desktop entry;
+  * icons;
+  * application binaries;
+  * required dynamically linked Qt runtime when system Qt version cannot satisfy pinned requirements;
+  * production DTC DB;
+  * notices/licenses.
+* [ ] Use package-private Qt runtime layout when bundling is required.
+* [ ] Configure runtime search paths safely.
+* [ ] Document physical CAN configuration separately from application runtime.
+* [ ] Document `vcan0` setup for development.
+* [ ] Configure Linux CI:
+
+  * GCC normal build/tests;
+  * Clang ASan+UBSan;
+  * optional TSan core suite;
+  * `vcan0` integration;
+  * DEB generation/smoke install.
+* [ ] Do not package the test DTC fixture in release artifact.
+
+### Tests
+
+* Clean DEB installation.
+* Launch.
+* Synthetic mode.
+* `vcan0`.
+* uninstall.
+* runtime library resolution.
+* user-data path.
+* no fixture DB.
+* sanitizer suites.
+* package dependency validation.
+
+### Verification
+
+```text
+cmake --build --preset linux-gcc-release --target package
+```
+
+Then install/test the DEB on the project's documented supported Ubuntu LTS test environment.
+
+---
+
+## Step 10.4: Complete cross-platform acceptance
+
+* [ ] Replay identical golden sessions on Windows and Linux.
+* [ ] Require exact parity for:
+
+  * DTC codes;
+  * ECU identity;
+  * metadata strings;
+  * sample quality;
+  * rule state transitions;
+  * discrete protocol outcomes.
+* [ ] Compare floating-point metrics using explicit per-metric tolerances rather than requiring impossible bit-for-bit platform identity.
+* [ ] Verify:
+
+  * `IDataSource` behavior;
+  * scheduler behavior;
+  * decoder results;
+  * session parser;
+  * diagnostic rules;
+  * CSV export semantics.
+* [ ] Ensure deterministic rules use equivalent clock/seed inputs.
+* [ ] Investigate any platform-dependent diagnostic outcome.
+* [ ] Update `APP.md` and `MODERN.md` with final cross-platform constraints.
+
+### Tests / Acceptance
+
+* Golden protocol vectors.
+* Golden session replay.
+* Float tolerance checks.
+* Exact DTC/finding parity.
+* Export golden files with normalized line-ending handling.
+* Full release tests Windows + Linux.
+
+### Verification
+
+Run full release suites on both platforms and compare generated parity artifacts.
+
+---
+
+# Final Release-State Requirements
+
+At completion:
+
+## `APP.md`
+
+Must describe durable system knowledge including:
+
+* engine architecture;
+* thread ownership;
+* source lifecycle;
+* canonical transport boundary;
+* ELM327 transport ownership;
+* SocketCAN/kernel ISO-TP architecture;
+* scheduler arbitration;
+* telemetry data flow;
+* engine epochs;
+* diagnostics safety invariants;
+* recording/playback behavior;
+* major architectural rationale and known constraints.
+
+Do not duplicate class/function listings that are obvious from source code.
+
+## `MODERN.md`
+
+Must describe adopted technical policy including:
+
+* C++ standard;
+* compiler/toolchain support;
+* exact Qt policy;
+* Qt licensing boundary;
+* CMake baseline;
+* vcpkg policy;
+* dependency choices;
+* sanitizers;
+* preferred C++/Qt patterns;
+* deprecated approaches to avoid;
+* Windows packaging policy;
+* Linux SocketCAN/ISO-TP policy.
+
+## Testing
+
+Every implemented behavior-changing Step must have its planned automated tests implemented and executed.
+
+No Step is complete merely because the application builds.
+
+## Release Definition
+
+Windows v1 is complete only when:
+
+* backend acceptance passes;
+* UI acceptance passes;
+* required Windows tests pass;
+* real ELM327 validation is documented;
+* production DTC database is supplied and validated;
+* clean MSI installation succeeds;
+* release licensing/notices are present;
+* no fixture data is substituted for licensed production data;
+* `APP.md` and `MODERN.md` accurately describe the released system.

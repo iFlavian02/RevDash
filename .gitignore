@@ -1,0 +1,53 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+bin/
+lib/
+package/
+packages/
+staging/
+*.msi
+*.wixpdb
+
+# vcpkg
+vcpkg_installed/
+.vcpkg/
+
+# IDE and tooling
+.vs/
+.idea/
+*.user
+*.suo
+*.sln.docstates
+
+# Compiled binaries and objects
+*.obj
+*.o
+*.exe
+*.dll
+*.so
+*.dylib
+*.pdb
+*.ilk
+*.exp
+*.lib
+*.a
+
+# Testing and profiling
+Testing/
+*.log
+*.coverage
+
+# Runtime recordings and session files
+*.partial
+*.ridx
+*.jsonl
+!tests/fixtures/*.jsonl
+!tests/fixtures/*.csv
+!schemas/*.json
+sessions/
+
+# DTC raw licensed datasets (keep generated sqlite and fixtures)
+assets/dtc/*.csv
+assets/dtc/raw/
