@@ -16,11 +16,12 @@
 #include "revdash/core/latest_telemetry_store.hpp"
 #include "revdash/core/metric_aggregator.hpp"
 #include "revdash/core/pipeline_packets.hpp"
+#include "revdash/diagnostics/rule_evaluator.hpp"
 #include "revdash/drivers/pid_scheduler.hpp"
 
 namespace revdash::core {
 
-enum class EngineEventType : std::uint8_t { ConnectionStateChanged, TelemetryUpdated, Error };
+enum class EngineEventType : std::uint8_t { ConnectionStateChanged, TelemetryUpdated, DiagnosticFindingsUpdated, Error };
 
 struct EngineEvent {
     EngineEventType type{EngineEventType::ConnectionStateChanged};
@@ -61,8 +62,10 @@ public:
 
     // Exposed for source discovery and deterministic service tests.
     void setSupportedPids(std::vector<std::uint8_t> pids);
+    void setOxygenSensorTopology(std::optional<diagnostics::OxygenSensorTopology> topology);
 
     [[nodiscard]] TelemetrySnapshot telemetrySnapshot() const noexcept;
+    [[nodiscard]] std::vector<DiagnosticFinding> diagnosticFindings() const;
     [[nodiscard]] std::uint64_t epoch() const noexcept;
     [[nodiscard]] ConnectionState connectionState() const noexcept;
     [[nodiscard]] QueueHealth sourceQueueHealth() const noexcept;
@@ -97,7 +100,8 @@ private:
     SubscriptionToken source_subscription_;
     drivers::AdaptivePidScheduler scheduler_;
     LatestTelemetryStore telemetry_store_;
-    MetricAggregator diagnostic_evaluator_;
+    MetricAggregator metric_aggregator_;
+    diagnostics::DiagnosticRuleEvaluator diagnostic_evaluator_;
     std::atomic<std::uint64_t> epoch_{1};
     std::atomic<ConnectionState> connection_state_{ConnectionState::Disconnected};
     std::optional<DataSourceConfig> active_config_;

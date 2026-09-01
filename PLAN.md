@@ -296,8 +296,8 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [ ] `src/drivers/socketcan/*.cpp` — Stage 10
 * [ ] `headers/revdash/telemetry/*.hpp`
 * [ ] `src/telemetry/*.cpp`
-* [ ] `headers/revdash/diagnostics/*.hpp`
-* [ ] `src/diagnostics/*.cpp`
+* [x] `headers/revdash/diagnostics/*.hpp`
+* [x] `src/diagnostics/*.cpp`
 * [ ] `headers/revdash/session/*.hpp`
 * [ ] `src/session/*.cpp`
 * [ ] `src/cli/main.cpp`
@@ -322,7 +322,7 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [ ] `.github/workflows/windows.yml`
 * [ ] `.github/workflows/linux.yml`
 * [ ] `docs/session-format.md`
-* [ ] `docs/diagnostic-rules.md`
+* [x] `docs/diagnostic-rules.md`
 * [ ] `docs/hardware-validation.md`
 * [ ] `docs/licensing.md`
 * [ ] `src/main.cpp` — remove after dedicated entry points exist
@@ -1191,34 +1191,34 @@ ctest --preset windows-msvc-debug -R engine_pipeline --output-on-failure
 
 All findings are explicitly heuristic/advisory rather than definitive mechanical diagnoses.
 
-* [ ] Implement rule applicability gates based on:
+* [x] Implement rule applicability gates based on:
 
   * required PIDs;
   * sample quality;
   * sample freshness;
   * warmup/state conditions.
-* [ ] Implement timestamped rolling-window evaluator.
-* [ ] Reset incomplete windows on stale/invalid data.
-* [ ] Implement vacuum-leak heuristic using:
+* [x] Implement timestamped rolling-window evaluator.
+* [x] Reset incomplete windows on stale/invalid data.
+* [x] Implement vacuum-leak heuristic using:
 
   * idle-state gate;
   * load gate;
   * sustained positive LTFT;
   * convergence under increased load.
-* [ ] Implement catalyst-efficiency heuristic only where supported O2 sensor topology/data makes the calculation meaningful.
-* [ ] Require suitable engine temperature and steady operating window.
-* [ ] Implement stuck-open thermostat advisory from cold-start/warmup behavior.
-* [ ] Implement conservative charging-voltage anomaly rule rather than assuming every vehicle uses fixed alternator voltage behavior.
-* [ ] Define rule thresholds in centralized configuration/constants with explanatory documentation.
-* [ ] Implement:
+* [x] Implement catalyst-efficiency heuristic only where supported O2 sensor topology/data makes the calculation meaningful.
+* [x] Require suitable engine temperature and steady operating window.
+* [x] Implement stuck-open thermostat advisory from cold-start/warmup behavior.
+* [x] Implement conservative charging-voltage anomaly rule rather than assuming every vehicle uses fixed alternator voltage behavior.
+* [x] Define rule thresholds in centralized configuration/constants with explanatory documentation.
+* [x] Implement:
 
   * finding deduplication;
   * first/last seen;
   * active/resolved state;
   * evidence snapshot;
   * rule identifier/version.
-* [ ] Require stable clear condition before automatically resolving findings.
-* [ ] Document limitations in `docs/diagnostic-rules.md`.
+* [x] Require stable clear condition before automatically resolving findings.
+* [x] Document limitations in `docs/diagnostic-rules.md`.
 
 ### Tests
 

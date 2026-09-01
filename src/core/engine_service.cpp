@@ -33,7 +33,9 @@ EngineService::EngineService()
       engine_to_recorder_(std::make_unique<EngineToRecorderQueue>()),
       worker_([this](std::stop_token token) { run(token); }),
       recorder_worker_([this](std::stop_token token) { recorderRun(token); }) {
-    telemetry_store_.setEpoch(epoch_.load(std::memory_order_relaxed));
+    const auto initial_epoch = epoch_.load(std::memory_order_relaxed);
+    telemetry_store_.setEpoch(initial_epoch);
+    diagnostic_evaluator_.setEpoch(initial_epoch);
 }
 
 EngineService::~EngineService() {
@@ -111,8 +113,10 @@ void EngineService::setSimulationThrottle(double percent, EngineCompletion compl
 void EngineService::setSimulationAmbientTemperature(double celsius, EngineCompletion completion) { enqueue([this, celsius, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setAmbientTemperature(celsius); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
 void EngineService::resetSimulation(EngineCompletion completion) { enqueue([this, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->resetSimulation(); invalidateEpoch(); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
 void EngineService::setSupportedPids(std::vector<std::uint8_t> pids) { enqueue([this, pids = std::move(pids)]() mutable { scheduler_.setSupportedPids(std::move(pids)); }); }
+void EngineService::setOxygenSensorTopology(std::optional<diagnostics::OxygenSensorTopology> topology) { enqueue([this, topology = std::move(topology)]() mutable { diagnostic_evaluator_.setOxygenSensorTopology(std::move(topology)); }); }
 
 TelemetrySnapshot EngineService::telemetrySnapshot() const noexcept { return telemetry_store_.snapshot(); }
+std::vector<DiagnosticFinding> EngineService::diagnosticFindings() const { return diagnostic_evaluator_.findings(); }
 std::uint64_t EngineService::epoch() const noexcept { return epoch_.load(std::memory_order_acquire); }
 ConnectionState EngineService::connectionState() const noexcept { return connection_state_.load(std::memory_order_acquire); }
 QueueHealth EngineService::sourceQueueHealth() const noexcept { return source_to_engine_->health(); }
@@ -168,8 +172,11 @@ void EngineService::processPackets() {
         if (payload.size() >= 2 && payload[0] == 0x41) {
             const auto decoded = protocol::decodeMode01Response(packet.message, payload[1]);
             if (!decoded) { publishEvent({.type = EngineEventType::Error, .epoch = epoch(), .error = decoded.error()}); continue; }
-            for (const auto& sample : *decoded) { telemetry_store_.update(sample); diagnostic_evaluator_.ingest(sample); }
+            for (const auto& sample : *decoded) { telemetry_store_.update(sample); metric_aggregator_.ingest(sample); diagnostic_evaluator_.ingest(sample); }
             publishEvent({.type = EngineEventType::TelemetryUpdated, .connection_state = connectionState(), .epoch = epoch()});
+            if (diagnostic_evaluator_.evaluate(packet.message.monotonic_ts)) {
+                publishEvent({.type = EngineEventType::DiagnosticFindingsUpdated, .connection_state = connectionState(), .epoch = epoch()});
+            }
         }
         static_cast<void>(engine_to_recorder_->tryPush(RecorderPacket{.engine_epoch = packet.engine_epoch, .message = packet.message}));
     }
@@ -207,7 +214,7 @@ void EngineService::invalidateEpoch() {
     const auto new_epoch = epoch_.fetch_add(1, std::memory_order_acq_rel) + 1;
     SourceToEnginePacket stale; while (source_to_engine_->tryPop(stale)) {}
     RecorderPacket record; while (engine_to_recorder_->tryPop(record)) {}
-    diagnostic_evaluator_.setEpoch(new_epoch); telemetry_store_.setEpoch(new_epoch);
+    metric_aggregator_.setEpoch(new_epoch); diagnostic_evaluator_.setEpoch(new_epoch); telemetry_store_.setEpoch(new_epoch);
 }
 
 void EngineService::handleSourceState(ConnectionState state, const std::optional<Error>& error) {

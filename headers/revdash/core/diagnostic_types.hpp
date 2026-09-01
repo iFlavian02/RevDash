@@ -70,12 +70,15 @@ struct EcuMetadata {
 
 struct DiagnosticFinding {
     std::string rule_id;
+    std::string rule_version{"1.0"};
     Severity severity{Severity::Warning};
     std::string title;
     std::string description;
     std::vector<std::string> evidence{};
     MonotonicTimePoint first_detected{MonotonicClock::now()};
+    MonotonicTimePoint last_seen{MonotonicClock::now()};
     MonotonicTimePoint last_evaluated{MonotonicClock::now()};
+    std::optional<MonotonicTimePoint> resolved_at{std::nullopt};
     bool active{true};
 };
 
