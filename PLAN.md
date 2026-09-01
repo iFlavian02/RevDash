@@ -628,25 +628,25 @@ ctest --preset windows-msvc-debug -R mode01 --output-on-failure
 
 ## Step 2.2: Implement diagnostic services and DTC decoding
 
-* [ ] Decode Mode 03 stored DTC responses.
-* [ ] Decode Mode 07 pending DTC responses.
-* [ ] Preserve ECU source for every DTC.
-* [ ] Filter `0000` padding.
-* [ ] Deduplicate only equivalent records from the same ECU/category while preserving multi-ECU provenance.
-* [ ] Implement SAE DTC bitfield conversion to `P/C/B/U` codes.
-* [ ] Implement Mode 02 frame-zero freeze-frame extraction.
-* [ ] Reuse Mode 01 PID decoders for supported freeze-frame PIDs.
-* [ ] Format Mode 04 clear request.
-* [ ] Parse positive response `0x44`.
-* [ ] Parse and classify negative responses.
-* [ ] Implement Mode 09:
+* [x] Decode Mode 03 stored DTC responses.
+* [x] Decode Mode 07 pending DTC responses.
+* [x] Preserve ECU source for every DTC.
+* [x] Filter `0000` padding.
+* [x] Deduplicate only equivalent records from the same ECU/category while preserving multi-ECU provenance.
+* [x] Implement SAE DTC bitfield conversion to `P/C/B/U` codes.
+* [x] Implement Mode 02 frame-zero freeze-frame extraction.
+* [x] Reuse Mode 01 PID decoders for supported freeze-frame PIDs.
+* [x] Format Mode 04 clear request.
+* [x] Parse positive response `0x44`.
+* [x] Parse and classify negative responses.
+* [x] Implement Mode 09:
 
   * VIN;
   * calibration ID;
   * CVN.
-* [ ] Validate VIN length/content.
-* [ ] Preserve ECU source for metadata.
-* [ ] Keep J1979 multi-record/message sequencing conceptually separate from underlying ISO-TP transport segmentation.
+* [x] Validate VIN length/content.
+* [x] Preserve ECU source for metadata.
+* [x] Keep J1979 multi-record/message sequencing conceptually separate from underlying ISO-TP transport segmentation.
 
 ### Tests
 

@@ -39,4 +39,8 @@ Stage 2.1 adds a Qt-independent Mode 01 decoder and descriptor catalog. The cata
 
 Supported-PID discovery is intentionally separate from the telemetry query filter. Bitmaps use the SAE high-bit-first ordering for the next 32 PIDs. Discovery begins with 00 and follows 20 then 40 only if advertised, while the query filter schedules only catalogued PIDs advertised by the ECU. Narrowband O2 PIDs publish voltage metrics; wideband PIDs publish equivalence-ratio and sensor-current metrics. These are distinct metric types and must not be converted into each other.
 
+Stage 2.2 diagnostic services also consume complete logical J1979 messages, never raw ISO-TP frames. Mode 03 and Mode 07 records retain the originating ECU address and status; padding pairs are removed, and deduplication is deliberately limited to the same code, status category, and ECU. Mode 02 frame-zero extraction adapts its `0x42` response into the existing Mode 01 decoding boundary, so supported freeze-frame telemetry has the same units and validation as live values.
+
+Mode 04 is limited here to request formatting and strict response parsing; a safety workflow for actually clearing faults is deferred to the engine stage. Mode 09 parsing supports VIN, calibration-ID, and CVN records. VINs require one record marker followed by exactly 17 permitted characters. Multi-record CALID/CVN data may occur in one logical message and cross-message accumulation must use `mergeMode09Metadata`, which rejects mixing ECU sources or conflicting VIN values.
+
 No physical adapter, synthetic ECU behavior, scheduler, recorder, or UI workflow is implemented yet. The temporary no-Qt application fallback is a development build path; a complete desktop application begins in Stage 8.

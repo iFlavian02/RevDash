@@ -29,6 +29,7 @@ include(Dependencies)
 add_library(revdash_core STATIC
     src/core/async_data_source.cpp
     src/core/types.cpp
+    src/protocol/diagnostics.cpp
     src/protocol/mode01.cpp
 )
 
@@ -124,6 +125,7 @@ add_executable(revdash_unit_tests
     tests/unit/test_data_source.cpp
     tests/unit/test_pipeline.cpp
     tests/unit/test_mode01.cpp
+    tests/unit/test_diagnostics.cpp
 )
 
 target_link_libraries(revdash_unit_tests
@@ -139,6 +141,10 @@ add_test(NAME data_source_contract COMMAND revdash_unit_tests "[data_source_cont
 add_test(NAME spsc_queue COMMAND revdash_unit_tests "[spsc]")
 add_test(NAME latest_store COMMAND revdash_unit_tests "[latest_store]")
 add_test(NAME mode01 COMMAND revdash_unit_tests "[mode01]")
+add_test(NAME dtc_codec COMMAND revdash_unit_tests "[dtc_codec]")
+add_test(NAME mode02 COMMAND revdash_unit_tests "[mode02]")
+add_test(NAME mode04 COMMAND revdash_unit_tests "[mode04]")
+add_test(NAME mode09 COMMAND revdash_unit_tests "[mode09]")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp
