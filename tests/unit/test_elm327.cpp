@@ -51,7 +51,7 @@ TEST_CASE("ELM prompt parser classifies adapter status lines", "[elm327]") {
 TEST_CASE("ELM327 source initializes and preserves distinct CAN ECU responses", "[elm327]") {
     auto transport = std::make_unique<TranscriptTransport>(std::deque<std::string>{
         "ATZ\rELM327 v1.5\r>", "OK\r>", "OK\r>", "OK\r>", "OK\r>", "OK\r>", "OK\r>", "ELM327 v1.5\r>",
-        "010C\r7E8 04 41 0C 1A F8\r7E9 04 41 0C 1B 00\r>"
+        "010C\r7E8 04 41 0C 1A F8\r7E9 04 41 0C 1B 00\r>", "AUTO, ISO 15765-4 (CAN 11/500)\r>"
     });
     auto* transport_ptr = transport.get();
     revdash::drivers::Elm327DataSource source(std::move(transport));
@@ -68,4 +68,22 @@ TEST_CASE("ELM327 source initializes and preserves distinct CAN ECU responses", 
     REQUIRE(messages[0].ecu_address == revdash::core::EcuAddress{0x7E8});
     REQUIRE(messages[1].ecu_address == revdash::core::EcuAddress{0x7E9});
     REQUIRE(messages[0].payload()[0] == 0x41);
+    REQUIRE(source.stats().protocol == "AUTO, ISO 15765-4 (CAN 11/500)");
+}
+
+TEST_CASE("ELM prompt parser recognizes all terminal adapter outcomes", "[elm327]") {
+    struct Fixture { const char* line; ElmResponseStatus status; };
+    const std::array fixtures{
+        Fixture{"BUS INIT: ERROR", ElmResponseStatus::BusInitError},
+        Fixture{"UNABLE TO CONNECT", ElmResponseStatus::UnableToConnect},
+        Fixture{"STOPPED", ElmResponseStatus::Stopped},
+        Fixture{"?", ElmResponseStatus::UnsupportedCommand},
+        Fixture{"SEARCHING...", ElmResponseStatus::Searching},
+    };
+    for (const auto& fixture : fixtures) {
+        ElmPromptParser parser;
+        const auto response = parser.append(std::string{fixture.line} + "\r>");
+        REQUIRE(response.size() == 1);
+        REQUIRE(response.front().status == fixture.status);
+    }
 }

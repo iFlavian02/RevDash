@@ -949,7 +949,7 @@ ctest --preset windows-msvc-debug -R serial_transport --output-on-failure
 
 ---
 
-## Step 4.2: Implement ELM327 driver and prompt synchronizer
+## Step 4.2: Implement ELM327 driver and prompt synchronizer [x]
 
 ### Initialization
 

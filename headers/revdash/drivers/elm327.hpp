@@ -61,6 +61,7 @@ private:
     void readNext();
     void finishCommand(core::Result<ElmResponse> result);
     void normalize(const ElmResponse& response);
+    [[nodiscard]] std::chrono::milliseconds commandTimeout() const noexcept;
     [[nodiscard]] static std::string requestText(const core::ObdRequest& request);
 
     std::unique_ptr<ISerialTransport> transport_;
@@ -70,6 +71,9 @@ private:
     Elm327Stats stats_;
     std::vector<std::string> raw_lines_;
     std::uint64_t sequence_{0};
+    std::uint64_t command_id_{0};
+    std::chrono::milliseconds response_timeout_{2000};
+    std::uint8_t initialization_attempt_{0};
 };
 
 } // namespace revdash::drivers
