@@ -82,4 +82,39 @@ struct DiagnosticFinding {
     bool active{true};
 };
 
+struct DiagnosticSnapshot {
+    std::vector<DtcRecord> dtcs{};
+    std::vector<EcuMetadata> ecu_metadata{};
+    std::vector<DiagnosticFinding> findings{};
+    MonotonicTimePoint captured_at{MonotonicClock::now()};
+    std::uint64_t engine_epoch{0};
+};
+
+inline constexpr std::string_view kClearDiagnosticWarning =
+    "Clearing emissions-related diagnostic information may erase freeze-frame data and reset readiness-related state.";
+
+struct ClearDtcPreparation {
+    std::string confirmation_token;
+    MonotonicTimePoint expires_at{MonotonicClock::now()};
+    DiagnosticSnapshot snapshot{};
+    std::optional<std::string> vehicle_identity{std::nullopt};
+    std::string warning{std::string{kClearDiagnosticWarning}};
+};
+
+struct Mode04AuditRecord {
+    MonotonicTimePoint prepared_at{MonotonicClock::now()};
+    MonotonicTimePoint completed_at{MonotonicClock::now()};
+    std::optional<UtcTimePoint> completed_utc{std::nullopt};
+    DataSourceType source_type{DataSourceType::SerialElm327};
+    std::uint64_t engine_epoch{0};
+    std::optional<std::string> vehicle_identity{std::nullopt};
+    std::string warning{std::string{kClearDiagnosticWarning}};
+    DiagnosticSnapshot preparation_snapshot{};
+    std::vector<DtcRecord> post_clear_dtcs{};
+    bool request_transmitted{false};
+    bool positive_response{false};
+    bool post_clear_rescan_completed{false};
+    std::optional<Error> error{std::nullopt};
+};
+
 } // namespace revdash::core

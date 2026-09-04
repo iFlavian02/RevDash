@@ -193,6 +193,7 @@ add_test(NAME serial_transport COMMAND revdash_unit_tests "[serial_transport]")
 add_test(NAME elm327 COMMAND revdash_unit_tests "[elm327]")
 add_test(NAME pid_scheduler COMMAND revdash_unit_tests "[pid_scheduler]")
 add_test(NAME engine_pipeline COMMAND revdash_unit_tests "[engine_pipeline]")
+add_test(NAME diagnostic_service COMMAND revdash_unit_tests "[diagnostic_service]")
 add_test(NAME diagnostic_rules COMMAND revdash_unit_tests "[diagnostic_rules]")
 add_test(NAME dtc_database COMMAND revdash_unit_tests "[dtc_database]")
 

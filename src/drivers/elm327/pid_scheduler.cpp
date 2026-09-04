@@ -29,6 +29,14 @@ void AdaptivePidScheduler::complete(core::MonotonicTimePoint, std::chrono::milli
     ewma_rtt_ = std::chrono::milliseconds{(ewma_rtt_.count() * 7 + observed.count()) / 8};
 }
 void AdaptivePidScheduler::setCongested(bool congested) noexcept { congested_ = congested; }
+void AdaptivePidScheduler::reset() {
+    supported_.clear();
+    next_due_.clear();
+    diagnostics_.clear();
+    in_flight_ = false;
+    congested_ = false;
+    ewma_rtt_ = std::chrono::milliseconds{50};
+}
 bool AdaptivePidScheduler::inFlight() const noexcept { return in_flight_; }
 bool AdaptivePidScheduler::streamingPaused() const noexcept { return !diagnostics_.empty(); }
 std::chrono::milliseconds AdaptivePidScheduler::dispatchInterval() const noexcept { return std::max(std::chrono::milliseconds{10}, std::chrono::milliseconds{ewma_rtt_.count() * 5 / 4}); }

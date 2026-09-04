@@ -26,6 +26,10 @@ enum class ErrorCode {
     ProtocolNegativeResponse,
     DiagnosticsDatabaseInvalid,
     DiagnosticsUnsupported,
+    DiagnosticsOperationInProgress,
+    DiagnosticsSafetyRejected,
+    DiagnosticsTokenInvalid,
+    DiagnosticsTokenExpired,
     SessionInvalidFormat,
     StorageUnavailable
 };
@@ -53,7 +57,11 @@ enum class ErrorCode {
         case ErrorCode::ProtocolMalformedResponse:
         case ErrorCode::ProtocolNegativeResponse: return ErrorDomain::Protocol;
         case ErrorCode::DiagnosticsDatabaseInvalid:
-        case ErrorCode::DiagnosticsUnsupported: return ErrorDomain::Diagnostics;
+        case ErrorCode::DiagnosticsUnsupported:
+        case ErrorCode::DiagnosticsOperationInProgress:
+        case ErrorCode::DiagnosticsSafetyRejected:
+        case ErrorCode::DiagnosticsTokenInvalid:
+        case ErrorCode::DiagnosticsTokenExpired: return ErrorDomain::Diagnostics;
         case ErrorCode::SessionInvalidFormat: return ErrorDomain::Session;
         case ErrorCode::StorageUnavailable: return ErrorDomain::Storage;
     }
@@ -72,6 +80,10 @@ enum class ErrorCode {
         case ErrorCode::ProtocolNegativeResponse: return "Protocol.NegativeResponse";
         case ErrorCode::DiagnosticsDatabaseInvalid: return "Diagnostics.DatabaseInvalid";
         case ErrorCode::DiagnosticsUnsupported: return "Diagnostics.Unsupported";
+        case ErrorCode::DiagnosticsOperationInProgress: return "Diagnostics.OperationInProgress";
+        case ErrorCode::DiagnosticsSafetyRejected: return "Diagnostics.SafetyRejected";
+        case ErrorCode::DiagnosticsTokenInvalid: return "Diagnostics.TokenInvalid";
+        case ErrorCode::DiagnosticsTokenExpired: return "Diagnostics.TokenExpired";
         case ErrorCode::SessionInvalidFormat: return "Session.InvalidFormat";
         case ErrorCode::StorageUnavailable: return "Storage.Unavailable";
     }

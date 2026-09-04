@@ -59,6 +59,10 @@ TEST_CASE("Error and Result domain models", "[core_types]") {
         REQUIRE(errorDomain(ErrorCode::DiagnosticsDatabaseInvalid) == ErrorDomain::Diagnostics);
         REQUIRE(toString(ErrorCode::DiagnosticsDatabaseInvalid) == "Diagnostics.DatabaseInvalid");
         REQUIRE(errorDomain(ErrorCode::DiagnosticsUnsupported) == ErrorDomain::Diagnostics);
+        REQUIRE(toString(ErrorCode::DiagnosticsOperationInProgress) == "Diagnostics.OperationInProgress");
+        REQUIRE(toString(ErrorCode::DiagnosticsSafetyRejected) == "Diagnostics.SafetyRejected");
+        REQUIRE(toString(ErrorCode::DiagnosticsTokenInvalid) == "Diagnostics.TokenInvalid");
+        REQUIRE(toString(ErrorCode::DiagnosticsTokenExpired) == "Diagnostics.TokenExpired");
         REQUIRE(errorDomain(ErrorCode::SessionInvalidFormat) == ErrorDomain::Session);
         REQUIRE(errorDomain(ErrorCode::StorageUnavailable) == ErrorDomain::Storage);
 

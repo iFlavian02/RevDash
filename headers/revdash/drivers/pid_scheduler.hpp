@@ -19,6 +19,7 @@ public:
     [[nodiscard]] std::optional<core::ObdRequest> next(core::MonotonicTimePoint now);
     void complete(core::MonotonicTimePoint now, std::chrono::milliseconds round_trip, bool timed_out = false);
     void setCongested(bool congested) noexcept;
+    void reset();
     [[nodiscard]] bool inFlight() const noexcept;
     [[nodiscard]] bool streamingPaused() const noexcept;
     [[nodiscard]] std::chrono::milliseconds dispatchInterval() const noexcept;

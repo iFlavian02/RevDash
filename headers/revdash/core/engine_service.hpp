@@ -17,11 +17,12 @@
 #include "revdash/core/metric_aggregator.hpp"
 #include "revdash/core/pipeline_packets.hpp"
 #include "revdash/diagnostics/rule_evaluator.hpp"
+#include "revdash/diagnostics/dtc_database.hpp"
 #include "revdash/drivers/pid_scheduler.hpp"
 
 namespace revdash::core {
 
-enum class EngineEventType : std::uint8_t { ConnectionStateChanged, TelemetryUpdated, DiagnosticFindingsUpdated, Error };
+enum class EngineEventType : std::uint8_t { ConnectionStateChanged, TelemetryUpdated, DiagnosticFindingsUpdated, DiagnosticDataUpdated, Mode04AuditUpdated, Error };
 
 struct EngineEvent {
     EngineEventType type{EngineEventType::ConnectionStateChanged};
@@ -31,6 +32,10 @@ struct EngineEvent {
 };
 
 using EngineCompletion = std::function<void(Result<void>)>;
+using DiagnosticScanCompletion = std::function<void(Result<DiagnosticSnapshot>)>;
+using IdentificationCompletion = std::function<void(Result<std::vector<EcuMetadata>>)>;
+using ClearPreparationCompletion = std::function<void(Result<ClearDtcPreparation>)>;
+using ClearConfirmationCompletion = std::function<void(Result<Mode04AuditRecord>)>;
 using EngineEventHandler = std::function<void(const EngineEvent&)>;
 using RecorderHandler = std::function<void(const RecorderPacket&)>;
 
@@ -39,7 +44,9 @@ using RecorderHandler = std::function<void(const RecorderPacket&)>;
 // execute on the engine worker and presentation layers must marshal as needed.
 class EngineService final {
 public:
-    EngineService();
+    explicit EngineService(
+        std::shared_ptr<IClock> clock = std::make_shared<SystemClockSource>(),
+        std::chrono::milliseconds post_clear_settling_delay = std::chrono::milliseconds{250});
     ~EngineService();
 
     EngineService(const EngineService&) = delete;
@@ -48,10 +55,10 @@ public:
     void setSource(std::unique_ptr<IDataSource> source, EngineCompletion completion = {});
     void connect(const DataSourceConfig& config, EngineCompletion completion = {});
     void disconnect(EngineCompletion completion = {});
-    void scan(EngineCompletion completion = {});
-    void identify(EngineCompletion completion = {});
-    void prepareClear(EngineCompletion completion = {});
-    void confirmClear(EngineCompletion completion = {});
+    void scan(DiagnosticScanCompletion completion = {});
+    void identify(IdentificationCompletion completion = {});
+    void prepareClear(ClearPreparationCompletion completion = {});
+    void confirmClear(std::string confirmation_token, ClearConfirmationCompletion completion = {});
     void startRecording(EngineCompletion completion = {});
     void stopRecording(EngineCompletion completion = {});
     void startPlayback(EngineCompletion completion = {});
@@ -63,9 +70,13 @@ public:
     // Exposed for source discovery and deterministic service tests.
     void setSupportedPids(std::vector<std::uint8_t> pids);
     void setOxygenSensorTopology(std::optional<diagnostics::OxygenSensorTopology> topology);
+    void setDtcDatabase(std::shared_ptr<const diagnostics::DtcDatabase> database);
 
     [[nodiscard]] TelemetrySnapshot telemetrySnapshot() const noexcept;
     [[nodiscard]] std::vector<DiagnosticFinding> diagnosticFindings() const;
+    [[nodiscard]] DiagnosticSnapshot diagnosticSnapshot() const;
+    [[nodiscard]] std::vector<EcuMetadata> ecuMetadata() const;
+    [[nodiscard]] std::vector<Mode04AuditRecord> mode04AuditRecords() const;
     [[nodiscard]] std::uint64_t epoch() const noexcept;
     [[nodiscard]] ConnectionState connectionState() const noexcept;
     [[nodiscard]] QueueHealth sourceQueueHealth() const noexcept;
@@ -89,6 +100,16 @@ private:
     void scheduleReconnect();
     void attemptReconnect();
     void completeUnsupported(EngineCompletion completion, const char* operation);
+    void beginScan(DiagnosticScanCompletion completion, bool post_clear_rescan = false);
+    void finishDiagnosticRequest(const ObdRequest& request, Result<void> result);
+    void handleDiagnosticMessage(const ObdMessage& message);
+    void finishScan();
+    void finishIdentification();
+    void finishClear(std::optional<Error> error);
+    void cancelDiagnosticOperation(const Error& error);
+    void invalidateClearPreparation();
+    [[nodiscard]] Result<void> validateClearSafety() const;
+    [[nodiscard]] std::optional<std::string> currentVehicleIdentity() const;
 
     mutable std::mutex command_mutex_;
     std::condition_variable_any command_ready_;
@@ -108,6 +129,19 @@ private:
     std::optional<MonotonicTimePoint> reconnect_at_;
     std::uint8_t reconnect_attempt_{0};
     bool reconnecting_{false};
+
+    struct DiagnosticOperation;
+    struct ClearTokenState;
+    std::unique_ptr<DiagnosticOperation> diagnostic_operation_;
+    std::unique_ptr<ClearTokenState> clear_token_;
+    std::shared_ptr<IClock> clock_;
+    std::chrono::milliseconds post_clear_settling_delay_;
+    std::optional<MonotonicTimePoint> clear_settle_at_;
+    std::shared_ptr<const diagnostics::DtcDatabase> dtc_database_;
+    mutable std::mutex diagnostic_mutex_;
+    DiagnosticSnapshot diagnostic_snapshot_;
+    std::vector<EcuMetadata> ecu_metadata_;
+    std::vector<Mode04AuditRecord> mode04_audits_;
 
     mutable std::mutex event_mutex_;
     struct EventSubscriber;

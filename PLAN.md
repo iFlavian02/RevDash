@@ -1303,31 +1303,31 @@ ctest --preset windows-msvc-debug -R dtc_database --output-on-failure
 
 ### Scan
 
-* [ ] Pause streaming scheduler.
-* [ ] Query Mode 03 + Mode 07.
-* [ ] Enrich DTCs from local DB.
-* [ ] Query available Mode 02 freeze frame.
-* [ ] Resume scheduler.
-* [ ] Preserve ECU source.
+* [x] Pause streaming scheduler.
+* [x] Query Mode 03 + Mode 07.
+* [x] Enrich DTCs from local DB.
+* [x] Query available Mode 02 freeze frame.
+* [x] Resume scheduler.
+* [x] Preserve ECU source.
 
 ### Metadata
 
-* [ ] Query Mode 09 VIN/CALID/CVN.
-* [ ] Preserve per-ECU provenance.
-* [ ] Tolerate partial support.
+* [x] Query Mode 09 VIN/CALID/CVN.
+* [x] Preserve per-ECU provenance.
+* [x] Tolerate partial support.
 
 ### Mode 04 Preparation
 
 `prepareClearDtc()` succeeds only when:
 
-* [ ] active source is physical;
-* [ ] source is `Ready`;
-* [ ] no incompatible operation is active;
-* [ ] engine epoch remains stable;
-* [ ] vehicle speed sample exists;
-* [ ] speed quality is `Valid`;
-* [ ] speed sample is within defined freshness threshold;
-* [ ] speed ≤ 0.5 km/h.
+* [x] active source is physical;
+* [x] source is `Ready`;
+* [x] no incompatible operation is active;
+* [x] engine epoch remains stable;
+* [x] vehicle speed sample exists;
+* [x] speed quality is `Valid`;
+* [x] speed sample is within defined freshness threshold;
+* [x] speed ≤ 0.5 km/h.
 
 Reject:
 
@@ -1340,28 +1340,28 @@ Reject:
 
 Before producing token:
 
-* [ ] capture DTC/freeze-frame/evidence snapshot;
-* [ ] record that Mode 04 may erase emissions diagnostic information and reset readiness-related state;
-* [ ] generate single-use random confirmation token;
-* [ ] bind token to:
+* [x] capture DTC/freeze-frame/evidence snapshot;
+* [x] record that Mode 04 may erase emissions diagnostic information and reset readiness-related state;
+* [x] generate single-use random confirmation token;
+* [x] bind token to:
 
   * source identity;
   * engine epoch;
   * preparation snapshot;
   * expiration;
   * vehicle identity when available.
-* [ ] expire token after 30 seconds.
-* [ ] invalidate token after any source/epoch/precondition change.
+* [x] expire token after 30 seconds.
+* [x] invalidate token after any source/epoch/precondition change.
 
 ### Mode 04 Confirmation
 
-* [ ] Revalidate safety state immediately before transmission.
-* [ ] Consume token atomically.
-* [ ] Send Mode 04.
-* [ ] Validate positive/negative response.
-* [ ] Wait a bounded post-clear settling delay.
-* [ ] Trigger automatic DTC rescan.
-* [ ] Record complete structured audit result.
+* [x] Revalidate safety state immediately before transmission.
+* [x] Consume token atomically.
+* [x] Send Mode 04.
+* [x] Validate positive/negative response.
+* [x] Wait a bounded post-clear settling delay.
+* [x] Trigger automatic DTC rescan.
+* [x] Record complete structured audit result.
 
 ### Tests
 

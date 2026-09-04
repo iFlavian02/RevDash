@@ -250,9 +250,9 @@ core::Result<std::vector<core::ObdMessage>> SyntheticDataSource::respond(const c
         if (auto result = append({0x44}, first_ecu); !result) return tl::make_unexpected(result.error());
     } else if (request.mode == 0x09) {
         if (request.pid == 0x02) {
-            if (auto result = append({0x49, 0x02, 0x01, '1', 'H', 'G', 'C', 'R', '2', 'F', '8', '3', 'H', 'A', '0', '0', '0', '0', '0'}, first_ecu); !result) return tl::make_unexpected(result.error());
+            if (auto result = append({0x49, 0x02, 0x01, '1', 'H', 'G', 'C', 'R', '2', 'F', '8', '3', 'H', 'A', '0', '0', '0', '0', '0', '0'}, first_ecu); !result) return tl::make_unexpected(result.error());
         } else if (request.pid == 0x04) {
-            if (auto result = append({0x49, 0x04, 0x01, 'S', 'Y', 'N', 'T', 'H', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1'}, first_ecu); !result) return tl::make_unexpected(result.error());
+            if (auto result = append({0x49, 0x04, 0x01, 'S', 'Y', 'N', 'T', 'H', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '1'}, first_ecu); !result) return tl::make_unexpected(result.error());
         } else if (request.pid == 0x06) {
             if (auto result = append({0x49, 0x06, 0x01, 0x53, 0x59, 0x4E, 0x31}, first_ecu); !result) return tl::make_unexpected(result.error());
         } else {
@@ -261,8 +261,8 @@ core::Result<std::vector<core::ObdMessage>> SyntheticDataSource::respond(const c
         }
         if (source_config_.include_second_ecu && !request.target_ecu) {
             std::vector<std::uint8_t> second_payload;
-            if (request.pid == 0x02) second_payload = {0x49, 0x02, 0x01, '2', 'H', 'G', 'C', 'R', '2', 'F', '8', '3', 'H', 'A', '0', '0', '0', '0', '1'};
-            if (request.pid == 0x04) second_payload = {0x49, 0x04, 0x01, 'S', 'Y', 'N', 'T', 'H', '0', '0', '0', '0', '0', '0', '0', '0', '0', '2'};
+            if (request.pid == 0x02) second_payload = {0x49, 0x02, 0x01, '2', 'H', 'G', 'C', 'R', '2', 'F', '8', '3', 'H', 'A', '0', '0', '0', '0', '0', '1'};
+            if (request.pid == 0x04) second_payload = {0x49, 0x04, 0x01, 'S', 'Y', 'N', 'T', 'H', '0', '0', '0', '0', '0', '0', '0', '0', '0', '0', '2'};
             if (request.pid == 0x06) second_payload = {0x49, 0x06, 0x01, 0x53, 0x59, 0x4E, 0x32};
             if (auto result = append(std::move(second_payload), core::EcuAddress{0x7E9}); !result) return tl::make_unexpected(result.error());
         }
