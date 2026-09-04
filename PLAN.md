@@ -298,8 +298,8 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [ ] `src/telemetry/*.cpp`
 * [x] `headers/revdash/diagnostics/*.hpp`
 * [x] `src/diagnostics/*.cpp`
-* [ ] `headers/revdash/session/*.hpp`
-* [ ] `src/session/*.cpp`
+* [x] `headers/revdash/session/*.hpp`
+* [x] `src/session/*.cpp`
 * [ ] `src/cli/main.cpp`
 * [ ] `src/app/main.cpp`
 * [ ] `src/ui/*.cpp`
@@ -307,7 +307,7 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [ ] `qml/*.qml`
 * [ ] `qml/components/*.qml`
 * [ ] `qml/workspaces/*.qml`
-* [ ] `schemas/session-v1.schema.json`
+* [x] `schemas/session-v1.schema.json`
 * [x] `tools/dtc_importer/*`
 * [ ] `assets/dtc/*`
 * [ ] `assets/licenses/*`
@@ -321,7 +321,7 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [ ] `packaging/linux/*`
 * [ ] `.github/workflows/windows.yml`
 * [ ] `.github/workflows/linux.yml`
-* [ ] `docs/session-format.md`
+* [x] `docs/session-format.md`
 * [x] `docs/diagnostic-rules.md`
 * [ ] `docs/hardware-validation.md`
 * [ ] `docs/licensing.md`
@@ -1398,7 +1398,7 @@ ctest --preset windows-msvc-debug -R diagnostic_service --output-on-failure
 
 ## Step 6.1: Implement versioned JSONL recording
 
-* [ ] Define Schema v1 record types:
+* [x] Define Schema v1 record types:
 
   * header;
   * OBD message;
@@ -1409,7 +1409,7 @@ ctest --preset windows-msvc-debug -R diagnostic_service --output-on-failure
   * ECU metadata;
   * data-loss marker;
   * footer.
-* [ ] Header includes:
+* [x] Header includes:
 
   * UUID;
   * application version;
@@ -1419,21 +1419,21 @@ ctest --preset windows-msvc-debug -R diagnostic_service --output-on-failure
   * adapter/protocol metadata when known;
   * vehicle metadata;
   * simulation configuration/seed when applicable.
-* [ ] Use integer `elapsed_us`.
-* [ ] Raw logical payloads use uppercase hex.
-* [ ] Preserve ECU identity.
-* [ ] Use streaming/preallocated serializer path.
-* [ ] Benchmark steady telemetry serialization for unnecessary allocations.
-* [ ] Record to `.partial`.
-* [ ] On successful completion:
+* [x] Use integer `elapsed_us`.
+* [x] Raw logical payloads use uppercase hex.
+* [x] Preserve ECU identity.
+* [x] Use streaming/preallocated serializer path.
+* [x] Benchmark steady telemetry serialization for unnecessary allocations.
+* [x] Record to `.partial`.
+* [x] On successful completion:
 
   * write footer;
   * flush;
   * close;
   * atomically rename to `.jsonl`.
-* [ ] Leave recoverable `.partial` after abnormal termination.
-* [ ] Record explicit data-loss marker if recorder queue drops records.
-* [ ] Document format in `docs/session-format.md`.
+* [x] Leave recoverable `.partial` after abnormal termination.
+* [x] Record explicit data-loss marker if recorder queue drops records.
+* [x] Document format in `docs/session-format.md`.
 
 ### Tests
 

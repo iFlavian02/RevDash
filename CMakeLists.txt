@@ -46,6 +46,7 @@ add_library(revdash_core STATIC
     src/protocol/diagnostics.cpp
     src/protocol/isotp_trace.cpp
     src/protocol/mode01.cpp
+    src/session/session_recorder.cpp
 )
 
 target_include_directories(revdash_core
@@ -165,6 +166,7 @@ add_executable(revdash_unit_tests
     tests/unit/test_engine_service.cpp
     tests/unit/test_diagnostic_rules.cpp
     tests/unit/test_dtc_database.cpp
+    tests/unit/test_session_recorder.cpp
 )
 
 target_link_libraries(revdash_unit_tests
@@ -196,6 +198,7 @@ add_test(NAME engine_pipeline COMMAND revdash_unit_tests "[engine_pipeline]")
 add_test(NAME diagnostic_service COMMAND revdash_unit_tests "[diagnostic_service]")
 add_test(NAME diagnostic_rules COMMAND revdash_unit_tests "[diagnostic_rules]")
 add_test(NAME dtc_database COMMAND revdash_unit_tests "[dtc_database]")
+add_test(NAME session_recorder COMMAND revdash_unit_tests "[session_recorder]")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp

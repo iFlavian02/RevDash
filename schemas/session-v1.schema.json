@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://revdash.local/schemas/session-v1.schema.json",
+  "title": "RevDash JSONL session record, schema v1",
+  "type": "object",
+  "required": ["schema_version", "type", "elapsed_us"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "type": {
+      "enum": [
+        "header", "obd_message", "telemetry", "dtc", "diagnostic_finding",
+        "mode04_audit", "ecu_metadata", "data_loss", "footer"
+      ]
+    },
+    "elapsed_us": { "type": "integer", "minimum": 0 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "header" } } },
+      "then": {
+        "required": ["uuid", "application_version", "utc_start", "source_type", "adapter_metadata", "protocol_metadata", "vehicle_metadata", "simulation"]
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "obd_message" } } },
+      "then": { "required": ["source_type", "sequence", "ecu", "payload_hex"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "telemetry" } } },
+      "then": { "required": ["metric", "value", "unit", "quality", "sample_elapsed_us", "sequence", "ecu"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "dtc" } } },
+      "then": { "required": ["code", "status", "severity", "description", "likely_failure_points", "ecu", "freeze_frame"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "diagnostic_finding" } } },
+      "then": { "required": ["rule_id", "rule_version", "severity", "title", "description", "evidence", "active"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "mode04_audit" } } },
+      "then": { "required": ["prepared_elapsed_us", "completed_elapsed_us", "source_type", "engine_epoch", "warning", "preparation_snapshot", "post_clear_dtcs", "request_transmitted", "positive_response", "post_clear_rescan_completed", "error"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "ecu_metadata" } } },
+      "then": { "required": ["ecu", "vin", "calibration_ids", "cvns", "protocol_name"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "data_loss" } } },
+      "then": { "required": ["dropped_records"] }
+    },
+    {
+      "if": { "properties": { "type": { "const": "footer" } } },
+      "then": { "required": ["statistics"] }
+    }
+  ],
+  "additionalProperties": true
+}
