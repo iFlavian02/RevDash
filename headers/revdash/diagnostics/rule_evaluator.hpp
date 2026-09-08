@@ -71,6 +71,7 @@ public:
     void setEpoch(std::uint64_t epoch);
     [[nodiscard]] std::uint64_t epoch() const noexcept;
     [[nodiscard]] const DiagnosticRuleConfig& config() const noexcept;
+    [[nodiscard]] std::chrono::steady_clock::duration maximumActiveWindow() const noexcept;
 
 private:
     struct Impl;

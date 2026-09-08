@@ -46,6 +46,7 @@ public:
             write_lock_contentions_.fetch_add(1, std::memory_order_relaxed);
             lock.lock();
         }
+        snapshot_ = TelemetrySnapshot{};
         snapshot_.epoch = epoch;
     }
 

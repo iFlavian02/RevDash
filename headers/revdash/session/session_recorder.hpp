@@ -78,6 +78,11 @@ struct SessionStatistics {
     std::uint64_t serialization_buffer_growths{0};
 };
 
+struct HistoricalSessionRecord {
+    std::int64_t elapsed_us{0};
+    nlohmann::json value{};
+};
+
 // Abstracted to make disk failures deterministic in unit tests. Production uses
 // FileSessionStorage, which owns one binary output stream at a time.
 class ISessionStorage {

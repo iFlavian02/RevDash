@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "revdash/drivers/synthetic.hpp"
+#include "revdash/drivers/playback.hpp"
 #include "revdash/protocol/diagnostics.hpp"
 #include "revdash/protocol/mode01.hpp"
 
@@ -115,17 +116,18 @@ void EngineService::setSource(std::unique_ptr<IDataSource> source, EngineComplet
     auto pending_source = std::make_shared<std::unique_ptr<IDataSource>>(std::move(source));
     enqueue([this, pending_source, completion = std::move(completion)]() mutable {
         invalidateClearPreparation();
+        { std::lock_guard lock(diagnostic_mutex_); historical_playback_findings_.clear(); historical_playback_audits_.clear(); }
         if (source_ && source_->connectionState() != ConnectionState::Disconnected) {
             source_->disconnect([this, pending_source, completion = std::move(completion)](Result<void>) mutable {
                 enqueue([this, pending_source, completion = std::move(completion)]() mutable {
                     source_subscription_.reset(); source_ = std::move(*pending_source); active_config_.reset(); reconnect_at_.reset(); reconnect_attempt_ = 0;
-                    invalidateEpoch(); bindSource(); if (completion) completion(makeSuccess());
+                    invalidateEpoch(); if (completion) completion(makeSuccess());
                 });
             });
             return;
         }
         source_subscription_.reset(); source_ = std::move(*pending_source); active_config_.reset(); reconnect_at_.reset(); reconnect_attempt_ = 0;
-        invalidateEpoch(); bindSource(); if (completion) completion(makeSuccess());
+        invalidateEpoch(); if (completion) completion(makeSuccess());
     });
 }
 
@@ -136,7 +138,14 @@ void EngineService::connect(const DataSourceConfig& config, EngineCompletion com
         invalidateClearPreparation(); active_config_ = config; reconnect_at_.reset(); reconnect_attempt_ = 0; reconnecting_ = false;
         source_->connect(config, [this, completion = std::move(completion)](Result<void> result) mutable {
             enqueue([this, completion = std::move(completion), result = std::move(result)]() mutable {
-                if (result) { connection_state_.store(ConnectionState::Ready); publishEvent({.type = EngineEventType::ConnectionStateChanged, .connection_state = ConnectionState::Ready, .epoch = epoch(), .error = std::nullopt}); }
+                if (result) {
+                    if (const auto* playback = dynamic_cast<const drivers::PlaybackDataSource*>(source_.get())) {
+                        std::lock_guard lock(diagnostic_mutex_);
+                        historical_playback_findings_ = playback->historicalFindings();
+                        historical_playback_audits_ = playback->historicalMode04Audits();
+                    }
+                    connection_state_.store(ConnectionState::Ready); publishEvent({.type = EngineEventType::ConnectionStateChanged, .connection_state = ConnectionState::Ready, .epoch = epoch(), .error = std::nullopt});
+                }
                 if (completion) completion(std::move(result));
             });
         });
@@ -275,8 +284,94 @@ void EngineService::confirmClear(std::string confirmation_token, ClearConfirmati
 }
 void EngineService::startRecording(EngineCompletion completion) { enqueue([this, completion = std::move(completion)]() mutable { completeUnsupported(std::move(completion), "Recording"); }); }
 void EngineService::stopRecording(EngineCompletion completion) { enqueue([this, completion = std::move(completion)]() mutable { completeUnsupported(std::move(completion), "Recording"); }); }
-void EngineService::startPlayback(EngineCompletion completion) { enqueue([this, completion = std::move(completion)]() mutable { completeUnsupported(std::move(completion), "Playback"); }); }
-void EngineService::stopPlayback(EngineCompletion completion) { enqueue([this, completion = std::move(completion)]() mutable { completeUnsupported(std::move(completion), "Playback"); }); }
+void EngineService::startPlayback(EngineCompletion completion) {
+    enqueue([this, completion = std::move(completion)]() mutable {
+        if (auto* source = dynamic_cast<drivers::PlaybackDataSource*>(source_.get())) {
+            source->play([this, completion = std::move(completion)](Result<void> result) mutable {
+                enqueue([completion = std::move(completion), result = std::move(result)]() mutable {
+                    if (completion) completion(std::move(result));
+                });
+            });
+        } else {
+            completeUnsupported(std::move(completion), "Playback");
+        }
+    });
+}
+
+void EngineService::pausePlayback(EngineCompletion completion) {
+    enqueue([this, completion = std::move(completion)]() mutable {
+        if (auto* source = dynamic_cast<drivers::PlaybackDataSource*>(source_.get())) {
+            source->pause([this, completion = std::move(completion)](Result<void> result) mutable {
+                enqueue([completion = std::move(completion), result = std::move(result)]() mutable {
+                    if (completion) completion(std::move(result));
+                });
+            });
+        } else {
+            completeUnsupported(std::move(completion), "Playback");
+        }
+    });
+}
+
+void EngineService::stepPlayback(EngineCompletion completion) {
+    enqueue([this, completion = std::move(completion)]() mutable {
+        if (auto* source = dynamic_cast<drivers::PlaybackDataSource*>(source_.get())) {
+            source->step([this, completion = std::move(completion)](Result<void> result) mutable {
+                enqueue([completion = std::move(completion), result = std::move(result)]() mutable {
+                    if (completion) completion(std::move(result));
+                });
+            });
+        } else {
+            completeUnsupported(std::move(completion), "Playback");
+        }
+    });
+}
+void EngineService::seekPlayback(std::chrono::microseconds target, EngineCompletion completion) {
+    enqueue([this, target, completion = std::move(completion)]() mutable {
+        auto* source = dynamic_cast<drivers::PlaybackDataSource*>(source_.get());
+        if (!source) { completeUnsupported(std::move(completion), "Playback seek"); return; }
+        invalidateEpoch();
+        playback_rebuilding_ = true;
+        source->seek(target, diagnostic_evaluator_.maximumActiveWindow(),
+            [this, completion = std::move(completion)](Result<void> result) mutable {
+                enqueue([this, completion = std::move(completion), result = std::move(result)]() mutable {
+                    processPackets();
+                    playback_rebuilding_ = false;
+                    if (result) {
+                        publishEvent({.type = EngineEventType::TelemetryUpdated, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
+                        publishEvent({.type = EngineEventType::DiagnosticFindingsUpdated, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
+                    }
+                    if (completion) completion(std::move(result));
+                });
+            });
+    });
+}
+void EngineService::setPlaybackSpeed(double multiplier, EngineCompletion completion) {
+    enqueue([this, multiplier, completion = std::move(completion)]() mutable {
+        if (auto* source = dynamic_cast<drivers::PlaybackDataSource*>(source_.get())) {
+            source->setSpeedMultiplier(multiplier, [this, completion = std::move(completion)](Result<void> result) mutable {
+                enqueue([completion = std::move(completion), result = std::move(result)]() mutable {
+                    if (completion) completion(std::move(result));
+                });
+            });
+        } else {
+            completeUnsupported(std::move(completion), "Playback speed");
+        }
+    });
+}
+
+void EngineService::stopPlayback(EngineCompletion completion) {
+    enqueue([this, completion = std::move(completion)]() mutable {
+        if (auto* source = dynamic_cast<drivers::PlaybackDataSource*>(source_.get())) {
+            source->stop([this, completion = std::move(completion)](Result<void> result) mutable {
+                enqueue([completion = std::move(completion), result = std::move(result)]() mutable {
+                    if (completion) completion(std::move(result));
+                });
+            });
+        } else {
+            completeUnsupported(std::move(completion), "Playback");
+        }
+    });
+}
 
 void EngineService::setSimulationThrottle(double percent, EngineCompletion completion) { enqueue([this, percent, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setThrottle(percent); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
 void EngineService::setSimulationAmbientTemperature(double celsius, EngineCompletion completion) { enqueue([this, celsius, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setAmbientTemperature(celsius); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
@@ -290,6 +385,8 @@ std::vector<DiagnosticFinding> EngineService::diagnosticFindings() const { retur
 DiagnosticSnapshot EngineService::diagnosticSnapshot() const { std::lock_guard lock(diagnostic_mutex_); return diagnostic_snapshot_; }
 std::vector<EcuMetadata> EngineService::ecuMetadata() const { std::lock_guard lock(diagnostic_mutex_); return ecu_metadata_; }
 std::vector<Mode04AuditRecord> EngineService::mode04AuditRecords() const { std::lock_guard lock(diagnostic_mutex_); return mode04_audits_; }
+std::vector<session::HistoricalSessionRecord> EngineService::historicalPlaybackFindings() const { std::lock_guard lock(diagnostic_mutex_); return historical_playback_findings_; }
+std::vector<session::HistoricalSessionRecord> EngineService::historicalPlaybackMode04Audits() const { std::lock_guard lock(diagnostic_mutex_); return historical_playback_audits_; }
 std::uint64_t EngineService::epoch() const noexcept { return epoch_.load(std::memory_order_acquire); }
 ConnectionState EngineService::connectionState() const noexcept { return connection_state_.load(std::memory_order_acquire); }
 QueueHealth EngineService::sourceQueueHealth() const noexcept { return source_to_engine_->health(); }
@@ -357,9 +454,9 @@ void EngineService::processPackets() {
             const auto decoded = protocol::decodeMode01Response(packet.message, payload[1]);
             if (!decoded) { publishEvent({.type = EngineEventType::Error, .epoch = epoch(), .error = decoded.error()}); continue; }
             for (const auto& sample : *decoded) { telemetry_store_.update(sample); metric_aggregator_.ingest(sample); diagnostic_evaluator_.ingest(sample); }
-            publishEvent({.type = EngineEventType::TelemetryUpdated, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
+            if (!playback_rebuilding_) publishEvent({.type = EngineEventType::TelemetryUpdated, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
             if (diagnostic_evaluator_.evaluate(packet.message.monotonic_ts)) {
-                publishEvent({.type = EngineEventType::DiagnosticFindingsUpdated, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
+                if (!playback_rebuilding_) publishEvent({.type = EngineEventType::DiagnosticFindingsUpdated, .connection_state = connectionState(), .epoch = epoch(), .error = std::nullopt});
             }
         }
         static_cast<void>(engine_to_recorder_->tryPush(RecorderPacket{.engine_epoch = packet.engine_epoch, .message = packet.message}));
@@ -412,6 +509,7 @@ void EngineService::invalidateEpoch() {
     SourceToEnginePacket stale; while (source_to_engine_->tryPop(stale)) {}
     RecorderPacket record; while (engine_to_recorder_->tryPop(record)) {}
     metric_aggregator_.setEpoch(new_epoch); diagnostic_evaluator_.setEpoch(new_epoch); telemetry_store_.setEpoch(new_epoch);
+    if (source_) { source_subscription_.reset(); bindSource(); }
 }
 
 void EngineService::handleSourceState(ConnectionState state, const std::optional<Error>& error) {

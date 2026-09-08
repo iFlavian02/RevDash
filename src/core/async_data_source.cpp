@@ -158,6 +158,20 @@ void AsyncDataSource::postAfterToWorker(std::chrono::milliseconds delay, std::fu
     });
 }
 
+void AsyncDataSource::synchronizeWorker(std::function<void()> operation) {
+    auto complete = std::make_shared<std::promise<void>>();
+    auto ready = complete->get_future();
+    postToWorker([operation = std::move(operation), complete = std::move(complete)]() mutable {
+        if (operation) operation();
+        complete->set_value();
+    });
+    ready.wait();
+}
+
+void AsyncDataSource::cancelDelayedWorkerOperations() {
+    impl_->cancelDelayedOperations();
+}
+
 void AsyncDataSource::connect(const DataSourceConfig& config, CompletionCallback completion) {
     postToWorker([this, config, completion = std::move(completion)]() mutable {
         if (state_->stopping.load(std::memory_order_acquire)) {

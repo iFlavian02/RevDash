@@ -18,6 +18,10 @@ The final filename ends in `.jsonl`. Recording first writes the same basename wi
 
 An ECU identity is either `null` or an object with numeric `value` and `format` (`can_11_bit`, `can_29_bit`, or `other`). Keeping the address width prevents equal numeric values on different address schemes from being conflated.
 
+## Playback index
+
+Playback creates a same-basename `.ridx` sidecar containing approximately one-second byte-offset checkpoints. The index records its own version, the session schema version, duration, source size, and a content fingerprint. It is a disposable cache: playback rebuilds it when it is missing, malformed, inconsistent with the validated checkpoints, or does not match the current session fingerprint.
+
 ## Compatibility and validation
 
 Readers must reject unsupported `schema_version` values, unknown record types, missing required common fields, malformed JSON, decreasing `elapsed_us` values, and invalid hexadecimal payloads. The repository schema at `schemas/session-v1.schema.json` describes record-level structure. Cross-line rules—one header first, one footer last for completed sessions, and monotonic offsets—are stream validation rules implemented by playback rather than JSON Schema.

@@ -19,6 +19,7 @@
 #include "revdash/diagnostics/rule_evaluator.hpp"
 #include "revdash/diagnostics/dtc_database.hpp"
 #include "revdash/drivers/pid_scheduler.hpp"
+#include "revdash/session/session_recorder.hpp"
 
 namespace revdash::core {
 
@@ -62,6 +63,10 @@ public:
     void startRecording(EngineCompletion completion = {});
     void stopRecording(EngineCompletion completion = {});
     void startPlayback(EngineCompletion completion = {});
+    void pausePlayback(EngineCompletion completion = {});
+    void stepPlayback(EngineCompletion completion = {});
+    void seekPlayback(std::chrono::microseconds target, EngineCompletion completion = {});
+    void setPlaybackSpeed(double multiplier, EngineCompletion completion = {});
     void stopPlayback(EngineCompletion completion = {});
     void setSimulationThrottle(double percent, EngineCompletion completion = {});
     void setSimulationAmbientTemperature(double celsius, EngineCompletion completion = {});
@@ -77,6 +82,8 @@ public:
     [[nodiscard]] DiagnosticSnapshot diagnosticSnapshot() const;
     [[nodiscard]] std::vector<EcuMetadata> ecuMetadata() const;
     [[nodiscard]] std::vector<Mode04AuditRecord> mode04AuditRecords() const;
+    [[nodiscard]] std::vector<session::HistoricalSessionRecord> historicalPlaybackFindings() const;
+    [[nodiscard]] std::vector<session::HistoricalSessionRecord> historicalPlaybackMode04Audits() const;
     [[nodiscard]] std::uint64_t epoch() const noexcept;
     [[nodiscard]] ConnectionState connectionState() const noexcept;
     [[nodiscard]] QueueHealth sourceQueueHealth() const noexcept;
@@ -142,6 +149,9 @@ private:
     DiagnosticSnapshot diagnostic_snapshot_;
     std::vector<EcuMetadata> ecu_metadata_;
     std::vector<Mode04AuditRecord> mode04_audits_;
+    std::vector<session::HistoricalSessionRecord> historical_playback_findings_;
+    std::vector<session::HistoricalSessionRecord> historical_playback_audits_;
+    bool playback_rebuilding_{false};
 
     mutable std::mutex event_mutex_;
     struct EventSubscriber;

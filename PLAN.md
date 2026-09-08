@@ -292,7 +292,7 @@ Directory/glob entries authorize files created inside the listed path family whe
 * [x] `headers/revdash/drivers/*.hpp`
 * [x] `src/drivers/elm327/*.cpp`
 * [x] `src/drivers/synthetic/*.cpp`
-* [ ] `src/drivers/playback/*.cpp`
+* [x] `src/drivers/playback/*.cpp`
 * [ ] `src/drivers/socketcan/*.cpp` — Stage 10
 * [ ] `headers/revdash/telemetry/*.hpp`
 * [ ] `src/telemetry/*.cpp`
@@ -1461,9 +1461,9 @@ ctest --preset windows-msvc-debug -R session_recorder --output-on-failure
 
 ## Step 6.2: Implement deterministic playback source
 
-* [ ] Implement `PlaybackDataSource`.
-* [ ] Stream recorded `ObdMessage` records through normal decode/rule pipelines.
-* [ ] Controls:
+* [x] Implement `PlaybackDataSource`.
+* [x] Stream recorded `ObdMessage` records through normal decode/rule pipelines.
+* [x] Controls:
 
   * Play;
   * Pause;
@@ -1474,27 +1474,27 @@ ctest --preset windows-msvc-debug -R session_recorder --output-on-failure
   * 1×;
   * 2×;
   * 5×.
-* [ ] Create `.ridx` sidecar.
-* [ ] Add approximately 1-second seek checkpoints.
-* [ ] Index contains source file fingerprint/schema information so stale index files are rejected/rebuilt.
-* [ ] On seek:
+* [x] Create `.ridx` sidecar.
+* [x] Add approximately 1-second seek checkpoints.
+* [x] Index contains source file fingerprint/schema information so stale index files are rejected/rebuilt.
+* [x] On seek:
 
   * increment engine epoch;
   * reset rolling state;
   * locate target minus required diagnostic-rule warmup window;
   * silently fast-forward to target;
   * publish rebuilt state.
-* [ ] Derive warmup duration from configured maximum active rule window rather than hardcoding it.
-* [ ] Re-evaluate current telemetry/findings using current rule implementation.
-* [ ] Expose historical recorded findings/audits separately.
-* [ ] Validate:
+* [x] Derive warmup duration from configured maximum active rule window rather than hardcoding it.
+* [x] Re-evaluate current telemetry/findings using current rule implementation.
+* [x] Expose historical recorded findings/audits separately.
+* [x] Validate:
 
   * schema compatibility;
   * monotonic elapsed timestamps;
   * record structure;
   * hex payloads;
   * required fields.
-* [ ] Playback cannot invoke physical Mode 04.
+* [x] Playback cannot invoke physical Mode 04.
 
 ### Tests
 

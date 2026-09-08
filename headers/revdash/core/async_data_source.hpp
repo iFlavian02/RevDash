@@ -33,6 +33,8 @@ protected:
 
     void postToWorker(std::function<void()> operation);
     void postAfterToWorker(std::chrono::milliseconds delay, std::function<void()> operation);
+    void synchronizeWorker(std::function<void()> operation);
+    void cancelDelayedWorkerOperations();
     void publishMessage(const ObdMessage& message);
 
 private:

@@ -126,7 +126,6 @@ struct DiagnosticRuleEvaluator::Impl {
 
         auto& samples = history[index];
         const auto start = now - duration;
-        while (!samples.empty() && samples.front().monotonic_ts < start - core::MetricAggregator::staleAfter(metric)) samples.pop_front();
         if (samples.empty()) return std::nullopt;
 
         WindowValues result;
@@ -391,5 +390,12 @@ void DiagnosticRuleEvaluator::setEpoch(std::uint64_t epoch) {
 
 std::uint64_t DiagnosticRuleEvaluator::epoch() const noexcept { return impl_->current_epoch.load(std::memory_order_acquire); }
 const DiagnosticRuleConfig& DiagnosticRuleEvaluator::config() const noexcept { return impl_->config; }
+std::chrono::steady_clock::duration DiagnosticRuleEvaluator::maximumActiveWindow() const noexcept {
+    return std::max({impl_->config.vacuum_idle_window + impl_->config.vacuum_load_window,
+                     impl_->config.catalyst_window,
+                     impl_->config.thermostat_observation_window,
+                     impl_->config.charging_window,
+                     impl_->config.stable_clear_window});
+}
 
 } // namespace revdash::diagnostics

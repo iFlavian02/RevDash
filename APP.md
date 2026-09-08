@@ -79,7 +79,7 @@ The prompt parser tolerates echoes, CR/LF variation, blank lines, and prompts sp
 
 Source callbacks capture the current engine epoch and enqueue `SourceToEnginePacket` values. A source replacement or simulation reset increments the epoch, drains both queues, resets aggregation, and updates the telemetry snapshot epoch. The engine rejects packets that carry an obsolete epoch before decoding or recording them. Mode 01 responses flow through the table-driven decoder into coherent telemetry snapshots and the aggregation primitive; every accepted canonical source message is also handed to the recorder worker through the bounded recorder queue.
 
-Retryable source faults trigger no more than five automatic reconnects with 0.5 s, 1 s, 2 s, then 5 s delays. Explicit disconnect and source replacement cancel this schedule. The engine exposes serialized boundaries for scan, identification, guarded clear, recording, playback, and simulator control. Scan, identification, guarded clear, and synthetic controls are active. The Stage 6.1 session writer is available to recorder-worker integrations; engine command wiring and playback remain pending their presentation/orchestration work.
+Retryable source faults trigger no more than five automatic reconnects with 0.5 s, 1 s, 2 s, then 5 s delays. Explicit disconnect and source replacement cancel this schedule. The engine exposes serialized boundaries for scan, identification, guarded clear, recording, playback, and simulator control. Scan, identification, guarded clear, synthetic controls, and playback controls are active. The Stage 6.1 session writer is available to recorder-worker integrations; start/stop recording orchestration remains pending its presentation work.
 
 ## Diagnostic service and Mode 04 safety
 
@@ -112,3 +112,11 @@ Schema v1 sessions are streaming UTF-8 JSON Lines. Every line carries a record t
 `JsonlSessionRecorder` is Qt-independent and intended to be owned by the existing recorder worker. It streams through a reusable preallocated line buffer and retains only counters, never the full session. Queue owners report cumulative drop counts through `observeQueueDrops`; the recorder writes the positive delta so gaps cannot be mistaken for complete telemetry.
 
 File publication is transactional at the session level. A recording creates `<name>.partial` without overwriting an existing recovery file. Normal completion writes a statistics footer, flushes, closes, and atomically renames to `<name>.jsonl`. Destruction, process termination, write failure, or publication failure leaves the partial file recoverable. Existing final files are never overwritten. `ISessionStorage` exists solely as the I/O/failure boundary; production uses binary `FileSessionStorage`, while tests inject deterministic write failures.
+
+## Session playback
+
+`PlaybackDataSource` is an asynchronous, Qt-independent source that validates a complete Schema v1 JSONL session before becoming ready, then streams only recorded canonical `ObdMessage` records through the normal engine decoder and rule evaluator. It supports play, pause, single-step, stop, seek, and the fixed 0.5x/1x/2x/5x rates. Playback never accepts live diagnostic requests, and Mode 04 is explicitly unavailable.
+
+Each session gets a `.ridx` sidecar with approximately one-second byte-offset checkpoints plus the source size, content fingerprint, and schema/index versions. Missing, corrupt, or stale indexes are rebuilt from the validated source; they are never trusted across a fingerprint or schema mismatch.
+
+Seek is an engine epoch boundary. The engine clears telemetry and rolling/rule state, derives warmup from the maximum configured active diagnostic-rule window, asks the source to replay from the nearest checkpoint at or before that warmup range, suppresses intermediate presentation events, and publishes the rebuilt state at the target. Recorded findings and Mode 04 audits are historical artifacts exposed separately; current findings always come from the current rule implementation evaluating the replayed OBD evidence.
