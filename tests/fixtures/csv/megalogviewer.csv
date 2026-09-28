@@ -1,0 +1,4 @@
+Time [s],RPM [rpm],Speed [mph],TPS [%],MAP [psi],MAF [lb/min],Engine Load [%],Advance [deg],CLT [degF],STFT1 [%],LTFT1 [%],STFT2 [%],LTFT2 [%],IAT [degF],Fuel Level [%],Battery Voltage [V],O2 [V]
+0,1000,62.1371192237,,,,,,32,,,,,,,,
+0.1,1100,62.1371192237,,,1.32277357311,,,32,,,,,,,,
+0.2,1100,62.1371192237,,,1.32277357311,,,32,,,,,,,,

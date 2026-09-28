@@ -1,0 +1,4 @@
+Time [s],RPM [rpm],Vehicle Speed [km/h],Throttle [%],MAP [kPa],MAF [g/s],Load [%],Ignition Advance [deg],Coolant [degC],STFT Bank 1 [%],LTFT Bank 1 [%],STFT Bank 2 [%],LTFT Bank 2 [%],Intake Air [degC],Fuel Level [%],Battery [V],O2 Sensor 1 [V]
+0,1000,100,,,,,,0,,,,,,,,
+0.1,1100,100,,,10,,,0,,,,,,,,
+0.2,1100,100,,,10,,,0,,,,,,,,

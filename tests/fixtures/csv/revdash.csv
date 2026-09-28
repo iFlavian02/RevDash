@@ -1,0 +1,8 @@
+# Export Preset,RevDash
+# Source,"source, quoted.jsonl"
+# Unit System,Metric
+# Adapter,"Adapter, ""quoted"""
+Time [s],RPM [rpm],VehicleSpeed [km/h],ThrottlePosition [%],MAP [kPa],MAF [g/s],EngineLoad [%],TimingAdvance [deg],CoolantTemp [degC],STFT1 [%],LTFT1 [%],STFT2 [%],LTFT2 [%],AmbientAirTemp [degC],FuelLevel [%],ModuleVoltage [V],O2Sensor1Voltage [V],O2Sensor2Voltage [V],O2Sensor3Voltage [V],O2Sensor4Voltage [V],O2Sensor5Voltage [V],O2Sensor6Voltage [V],O2Sensor7Voltage [V],O2Sensor8Voltage [V],O2Sensor1EquivalenceRatio [ratio],O2Sensor2EquivalenceRatio [ratio],O2Sensor3EquivalenceRatio [ratio],O2Sensor4EquivalenceRatio [ratio],O2Sensor5EquivalenceRatio [ratio],O2Sensor6EquivalenceRatio [ratio],O2Sensor7EquivalenceRatio [ratio],O2Sensor8EquivalenceRatio [ratio],O2Sensor1Current [A],O2Sensor2Current [A],O2Sensor3Current [A],O2Sensor4Current [A],O2Sensor5Current [A],O2Sensor6Current [A],O2Sensor7Current [A],O2Sensor8Current [A]
+0,1000,100,,,,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+0.1,1100,100,,,10,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+0.2,1100,100,,,10,,,0,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,

@@ -27,3 +27,11 @@ Playback creates a same-basename `.ridx` sidecar containing approximately one-se
 Readers must reject unsupported `schema_version` values, unknown record types, missing required common fields, malformed JSON, decreasing `elapsed_us` values, and invalid hexadecimal payloads. The repository schema at `schemas/session-v1.schema.json` describes record-level structure. Cross-line rules—one header first, one footer last for completed sessions, and monotonic offsets—are stream validation rules implemented by playback rather than JSON Schema.
 
 Object keys are emitted deterministically by the adopted JSON library, and the writer reuses a preallocated line buffer. This keeps fixture serialization stable and avoids buffer growth for normal telemetry records; filesystem writes remain streaming and never require retaining a session in memory.
+
+## CSV export
+
+Completed Session v1 recordings can be exported on a configurable uniform timeline (100 ms / 10 Hz by default). A value is held only through the metric's core stale interval; later rows contain an empty field. Conversion to Imperial units happens during export, while the session remains canonical SI.
+
+The RevDash preset contains all catalogued metrics plus a small metadata preamble. MegaLogViewer and TunerStudio presets use conventional EFI Analytics channel labels and keep the CSV header as the first row. Units are tagged in every channel header. The compatibility layouts follow EFI Analytics' documented label-driven datalog model and MegaLogViewer HD's documented support for generic delimited logs; EFI Analytics does not publish one mandatory generic automotive CSV column schema, so these presets are RevDash-owned stable mappings rather than claims of a proprietary native format.
+
+Exports are written to a temporary file in the destination directory and atomically replace the destination only after the stream has been flushed and closed.

@@ -1522,20 +1522,20 @@ ctest --preset windows-msvc-debug -R session_playback --output-on-failure
 
 ## Step 6.3: Implement automotive CSV export
 
-* [ ] Implement configurable 10 Hz telemetry timeline.
-* [ ] Use sample-and-hold only while previous sample remains within that metric's valid hold/stale interval.
-* [ ] Output empty/missing value rather than holding stale data indefinitely.
-* [ ] Use locale-independent decimal formatting.
-* [ ] Escape CSV correctly.
-* [ ] Implement:
+* [x] Implement configurable 10 Hz telemetry timeline.
+* [x] Use sample-and-hold only while previous sample remains within that metric's valid hold/stale interval.
+* [x] Output empty/missing value rather than holding stale data indefinitely.
+* [x] Use locale-independent decimal formatting.
+* [x] Escape CSV correctly.
+* [x] Implement:
 
   * RevDash export;
   * MegaLogViewer-compatible preset;
   * TunerStudio-compatible preset.
-* [ ] Validate external presets against currently documented import expectations before freezing headers.
-* [ ] Apply Metric/Imperial conversion during export only.
-* [ ] Tag units in headers/metadata.
-* [ ] Export via temporary file followed by atomic replacement/rename.
+* [x] Validate external presets against currently documented import expectations before freezing headers.
+* [x] Apply Metric/Imperial conversion during export only.
+* [x] Tag units in headers/metadata.
+* [x] Export via temporary file followed by atomic replacement/rename.
 
 ### Tests
 
