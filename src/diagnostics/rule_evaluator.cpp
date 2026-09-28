@@ -27,17 +27,31 @@ using core::TelemetrySample;
 enum class RuleOutcome : std::uint8_t { Inapplicable, Triggered, Clear };
 
 struct WindowValues {
-    std::vector<double> values;
+    double minimum_value{0.0};
+    double maximum_value{0.0};
+    double sum{0.0};
+    double last_value{0.0};
+    std::size_t count{0};
 
-    [[nodiscard]] double minimum() const { return *std::min_element(values.begin(), values.end()); }
-    [[nodiscard]] double maximum() const { return *std::max_element(values.begin(), values.end()); }
-    [[nodiscard]] double mean() const {
-        double sum = 0.0;
-        for (const auto value : values) sum += value;
-        return sum / static_cast<double>(values.size());
+    void add(double value) noexcept {
+        if (count == 0) {
+            minimum_value = value;
+            maximum_value = value;
+        } else {
+            minimum_value = std::min(minimum_value, value);
+            maximum_value = std::max(maximum_value, value);
+        }
+        sum += value;
+        last_value = value;
+        ++count;
     }
+
+    [[nodiscard]] double minimum() const noexcept { return minimum_value; }
+    [[nodiscard]] double maximum() const noexcept { return maximum_value; }
+    [[nodiscard]] double mean() const noexcept { return sum / static_cast<double>(count); }
+    [[nodiscard]] double last() const noexcept { return last_value; }
     [[nodiscard]] bool allBetween(double low, double high) const {
-        return std::ranges::all_of(values, [low, high](double value) { return value >= low && value <= high; });
+        return minimum_value >= low && maximum_value <= high;
     }
 };
 
@@ -116,6 +130,16 @@ struct DiagnosticRuleEvaluator::Impl {
         }
     }
 
+    [[nodiscard]] bool hasCurrent(MetricId metric, MonotonicTimePoint now) {
+        const auto index = static_cast<std::size_t>(metric);
+        if (index >= core::kMetricCount || !last[index] || last[index]->quality != SampleQuality::Valid ||
+            now < last[index]->monotonic_ts || now - last[index]->monotonic_ts > core::MetricAggregator::staleAfter(metric)) {
+            if (index < core::kMetricCount) history[index].clear();
+            return false;
+        }
+        return true;
+    }
+
     [[nodiscard]] std::optional<WindowValues> window(MetricId metric, MonotonicTimePoint now, MonotonicClock::duration duration) {
         const auto index = static_cast<std::size_t>(metric);
         if (index >= core::kMetricCount || !last[index] || last[index]->quality != SampleQuality::Valid ||
@@ -130,18 +154,19 @@ struct DiagnosticRuleEvaluator::Impl {
 
         WindowValues result;
         MonotonicTimePoint previous{};
+        MonotonicTimePoint first{};
         bool have_previous = false;
         for (const auto& sample : samples) {
             if (sample.monotonic_ts < start || sample.monotonic_ts > now) continue;
             if (have_previous && sample.monotonic_ts - previous > core::MetricAggregator::staleAfter(metric) * 2) return std::nullopt;
-            result.values.push_back(sample.value);
+            if (!have_previous) first = sample.monotonic_ts;
+            result.add(sample.value);
             previous = sample.monotonic_ts;
             have_previous = true;
         }
-        if (result.values.empty()) return std::nullopt;
+        if (result.count == 0) return std::nullopt;
         if (duration > MonotonicClock::duration::zero()) {
-            const auto first_in_window = std::ranges::find_if(samples, [start](const auto& sample) { return sample.monotonic_ts >= start; });
-            if (first_in_window == samples.end() || first_in_window->monotonic_ts - start > core::MetricAggregator::staleAfter(metric) || result.values.size() < 2U) return std::nullopt;
+            if (first - start > core::MetricAggregator::staleAfter(metric) || result.count < 2U) return std::nullopt;
         }
         return result;
     }
@@ -198,6 +223,11 @@ struct DiagnosticRuleEvaluator::Impl {
     }
 
     [[nodiscard]] bool evaluateVacuum(MonotonicTimePoint now) {
+        if (!hasCurrent(MetricId::LongTermFuelTrim1, now) || !hasCurrent(MetricId::CoolantTemp, now) ||
+            !hasCurrent(MetricId::Rpm, now) || !hasCurrent(MetricId::VehicleSpeed, now) ||
+            !hasCurrent(MetricId::EngineLoad, now)) {
+            return apply(kVacuumLeak, RuleOutcome::Inapplicable, now, {});
+        }
         const auto clear_trim = window(MetricId::LongTermFuelTrim1, now, config.stable_clear_window);
         const auto warm = window(MetricId::CoolantTemp, now, MonotonicClock::duration::zero());
         const auto running = window(MetricId::Rpm, now, config.stable_clear_window);
@@ -205,7 +235,7 @@ struct DiagnosticRuleEvaluator::Impl {
         const auto current_load = window(MetricId::EngineLoad, now, config.stable_clear_window);
         const auto active_finding = std::ranges::find_if(findings, [](const auto& finding) { return finding.rule_id == kVacuumLeak.id && finding.active; });
         if (active_finding != findings.end() && clear_trim && warm && running && current_speed && current_load &&
-            warm->values.back() >= config.warm_coolant_c && running->allBetween(config.idle_min_rpm, config.idle_max_rpm) &&
+            warm->last() >= config.warm_coolant_c && running->allBetween(config.idle_min_rpm, config.idle_max_rpm) &&
             current_speed->allBetween(0.0, config.idle_max_speed_kph) && current_load->allBetween(0.0, config.idle_max_load_percent) &&
             clear_trim->allBetween(-config.vacuum_converged_ltft_percent, config.vacuum_converged_ltft_percent)) {
             return apply(kVacuumLeak, RuleOutcome::Clear, now, {});
@@ -249,6 +279,11 @@ struct DiagnosticRuleEvaluator::Impl {
             oxygen_topology->upstream == oxygen_topology->downstream) {
             return apply(kCatalystEfficiency, RuleOutcome::Inapplicable, now, {});
         }
+        if (!hasCurrent(oxygen_topology->upstream, now) || !hasCurrent(oxygen_topology->downstream, now) ||
+            !hasCurrent(MetricId::Rpm, now) || !hasCurrent(MetricId::EngineLoad, now) ||
+            !hasCurrent(MetricId::CoolantTemp, now)) {
+            return apply(kCatalystEfficiency, RuleOutcome::Inapplicable, now, {});
+        }
         const auto upstream = window(oxygen_topology->upstream, now, config.catalyst_window);
         const auto downstream = window(oxygen_topology->downstream, now, config.catalyst_window);
         const auto rpm = window(MetricId::Rpm, now, config.catalyst_window);
@@ -274,23 +309,29 @@ struct DiagnosticRuleEvaluator::Impl {
     }
 
     [[nodiscard]] bool evaluateThermostat(MonotonicTimePoint now) {
-        const auto rpm = window(MetricId::Rpm, now, MonotonicClock::duration::zero());
-        const auto coolant = window(MetricId::CoolantTemp, now, MonotonicClock::duration::zero());
-        const auto ambient = window(MetricId::AmbientAirTemp, now, MonotonicClock::duration::zero());
-        if (!rpm || !coolant || !ambient || rpm->values.back() < 500.0) {
+        if (!hasCurrent(MetricId::Rpm, now) || !hasCurrent(MetricId::CoolantTemp, now) ||
+            !hasCurrent(MetricId::AmbientAirTemp, now)) {
             thermostat_start.reset();
             thermostat_max_c = 0.0;
             return apply(kThermostat, RuleOutcome::Inapplicable, now, {});
         }
-        const auto coolant_c = coolant->values.back();
+        const auto rpm = window(MetricId::Rpm, now, MonotonicClock::duration::zero());
+        const auto coolant = window(MetricId::CoolantTemp, now, MonotonicClock::duration::zero());
+        const auto ambient = window(MetricId::AmbientAirTemp, now, MonotonicClock::duration::zero());
+        if (!rpm || !coolant || !ambient || rpm->last() < 500.0) {
+            thermostat_start.reset();
+            thermostat_max_c = 0.0;
+            return apply(kThermostat, RuleOutcome::Inapplicable, now, {});
+        }
+        const auto coolant_c = coolant->last();
         if (coolant_c >= config.thermostat_clear_c) return apply(kThermostat, RuleOutcome::Clear, now, {});
         if (!thermostat_start) {
-            if (coolant_c > config.thermostat_max_cold_start_c || std::abs(coolant_c - ambient->values.back()) > config.thermostat_max_cold_start_delta_c) {
+            if (coolant_c > config.thermostat_max_cold_start_c || std::abs(coolant_c - ambient->last()) > config.thermostat_max_cold_start_delta_c) {
                 return apply(kThermostat, RuleOutcome::Inapplicable, now, {});
             }
             thermostat_start = now;
             thermostat_start_c = coolant_c;
-            thermostat_ambient_c = ambient->values.back();
+            thermostat_ambient_c = ambient->last();
             thermostat_max_c = coolant_c;
         }
         thermostat_max_c = std::max(thermostat_max_c, coolant_c);
@@ -306,6 +347,10 @@ struct DiagnosticRuleEvaluator::Impl {
     }
 
     [[nodiscard]] bool evaluateCharging(MonotonicTimePoint now) {
+        if (!hasCurrent(MetricId::ModuleVoltage, now) || !hasCurrent(MetricId::Rpm, now) ||
+            !hasCurrent(MetricId::CoolantTemp, now)) {
+            return apply(kCharging, RuleOutcome::Inapplicable, now, {});
+        }
         const auto voltage = window(MetricId::ModuleVoltage, now, config.charging_window);
         const auto rpm = window(MetricId::Rpm, now, config.charging_window);
         const auto coolant = window(MetricId::CoolantTemp, now, config.charging_window);

@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -66,7 +67,9 @@ void writeSession(
 
 [[nodiscard]] std::string readFixture(std::string_view name) {
     const auto path = std::filesystem::path{__FILE__}.parent_path().parent_path() / "fixtures" / "csv" / name;
-    return readFile(path);
+    auto contents = readFile(path);
+    contents.erase(std::remove(contents.begin(), contents.end(), '\r'), contents.end());
+    return contents;
 }
 
 } // namespace

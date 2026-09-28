@@ -1562,7 +1562,7 @@ ctest --preset windows-msvc-debug -R csv_export --output-on-failure
 
 ## Step 7.1: Build diagnostic CLI
 
-* [ ] Implement CLI11 commands:
+* [x] Implement CLI11 commands:
 
   * `sources`;
   * `live`;
@@ -1573,9 +1573,9 @@ ctest --preset windows-msvc-debug -R csv_export --output-on-failure
   * `playback`;
   * `export`;
   * `clear`.
-* [ ] Human-readable table output.
-* [ ] Machine-readable JSON Lines output.
-* [ ] Standard exit codes:
+* [x] Human-readable table output.
+* [x] Machine-readable JSON Lines output.
+* [x] Standard exit codes:
 
   * 0 success;
   * 2 usage;
@@ -1583,15 +1583,15 @@ ctest --preset windows-msvc-debug -R csv_export --output-on-failure
   * 4 protocol;
   * 5 safety rejection;
   * 6 I/O.
-* [ ] Graceful console interruption.
-* [ ] `clear` remains a same-process guarded interaction:
+* [x] Graceful console interruption.
+* [x] `clear` remains a same-process guarded interaction:
 
   1. prepare;
   2. display destructive-effects warning and token;
   3. require explicit acknowledgement;
   4. require token confirmation;
   5. execute confirmation while original engine/source context remains active.
-* [ ] Do not weaken Mode 04 safeguards for CLI automation.
+* [x] Do not weaken Mode 04 safeguards for CLI automation.
 
 ### Tests
 
@@ -1618,20 +1618,20 @@ ctest --preset windows-msvc-debug -R cli --output-on-failure
 
 ## Step 7.2: Validate complete backend
 
-* [ ] Execute synthetic end-to-end scenarios:
+* [x] Execute synthetic end-to-end scenarios:
 
   * normal engine;
   * vacuum leak;
   * misfire;
   * thermostat;
   * noisy/dropout stream.
-* [ ] Validate complete:
+* [x] Validate complete:
   source → scheduler → decoder → telemetry → rules → recorder.
 * [ ] Profile steady telemetry pipeline over at least 100,000 frames.
 * [ ] Confirm queue path does not allocate after initialization.
 * [ ] Investigate any significant unexpected telemetry hot-path allocation rather than enforcing impossible zero-allocation behavior on unrelated diagnostic events.
 * [ ] Validate 5× playback at equivalent 250 packets/sec acceptance load with no queue drops on reference development hardware.
-* [ ] Validate bounded shutdown under active I/O.
+* [x] Validate bounded shutdown under active I/O.
 * [ ] Run Windows ASan core/integration tests.
 
 ### Tests / Acceptance

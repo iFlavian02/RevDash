@@ -228,4 +228,5 @@ target_link_libraries(revdash_integration_tests
 
 revdash_apply_compiler_options(revdash_integration_tests)
 
-add_test(NAME integration_harness COMMAND revdash_integration_tests)
+add_test(NAME backend_e2e COMMAND revdash_integration_tests "[backend_e2e]")
+set_tests_properties(backend_e2e PROPERTIES LABELS "backend_e2e")
