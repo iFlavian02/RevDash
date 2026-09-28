@@ -81,13 +81,20 @@ revdash_apply_compiler_options(revdash_core)
 # -----------------------------------------------------------------------------
 # Headless Diagnostic CLI Target
 # -----------------------------------------------------------------------------
-add_executable(revdash_cli
-    src/cli/main.cpp
-)
+add_library(revdash_cli_support STATIC src/cli/application.cpp)
+
+target_include_directories(revdash_cli_support PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/headers)
+
+target_link_libraries(revdash_cli_support PUBLIC revdash_core CLI11::CLI11)
+
+revdash_apply_compiler_options(revdash_cli_support)
+
+add_executable(revdash_cli src/cli/main.cpp)
 
 target_link_libraries(revdash_cli
     PRIVATE
         revdash_core
+        revdash_cli_support
         CLI11::CLI11
         spdlog::spdlog
 )
@@ -171,11 +178,13 @@ add_executable(revdash_unit_tests
     tests/unit/test_session_recorder.cpp
     tests/unit/test_session_playback.cpp
     tests/unit/test_csv_exporter.cpp
+    tests/unit/test_cli.cpp
 )
 
 target_link_libraries(revdash_unit_tests
     PRIVATE
         revdash_core
+        revdash_cli_support
         Catch2::Catch2WithMain
 )
 
@@ -205,6 +214,7 @@ add_test(NAME dtc_database COMMAND revdash_unit_tests "[dtc_database]")
 add_test(NAME session_recorder COMMAND revdash_unit_tests "[session_recorder]")
 add_test(NAME session_playback COMMAND revdash_unit_tests "[session_playback]")
 add_test(NAME csv_export COMMAND revdash_unit_tests "[csv_export]")
+add_test(NAME cli COMMAND revdash_unit_tests "[cli]")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp
