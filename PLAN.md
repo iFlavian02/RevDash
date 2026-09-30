@@ -1627,12 +1627,12 @@ ctest --preset windows-msvc-debug -R cli --output-on-failure
   * noisy/dropout stream.
 * [x] Validate complete:
   source → scheduler → decoder → telemetry → rules → recorder.
-* [ ] Profile steady telemetry pipeline over at least 100,000 frames.
-* [ ] Confirm queue path does not allocate after initialization.
-* [ ] Investigate any significant unexpected telemetry hot-path allocation rather than enforcing impossible zero-allocation behavior on unrelated diagnostic events.
-* [ ] Validate 5× playback at equivalent 250 packets/sec acceptance load with no queue drops on reference development hardware.
+* [x] Profile steady telemetry pipeline over at least 100,000 frames.
+* [x] Confirm queue path does not allocate after initialization.
+* [x] Investigate any significant unexpected telemetry hot-path allocation rather than enforcing impossible zero-allocation behavior on unrelated diagnostic events.
+* [x] Validate 5× playback at equivalent 250 packets/sec acceptance load with no queue drops on reference development hardware.
 * [x] Validate bounded shutdown under active I/O.
-* [ ] Run Windows ASan core/integration tests.
+* [x] Run Windows ASan core/integration tests.
 
 ### Tests / Acceptance
 
