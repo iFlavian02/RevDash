@@ -436,7 +436,8 @@ int runClear(const SourceOptions& source, bool jsonl, std::istream& input,
     if (acknowledgement != "CLEAR") {
         core::Error rejection{.domain = core::ErrorDomain::Diagnostics,
                               .code = std::string{core::toString(core::ErrorCode::DiagnosticsSafetyRejected)},
-                              .message = "Clear acknowledgement was rejected"};
+                              .message = "Clear acknowledgement was rejected",
+                              .context = {}};
         emitError(error, jsonl, rejection);
         disconnect(engine);
         return static_cast<int>(ExitCode::SafetyRejection);
@@ -447,7 +448,8 @@ int runClear(const SourceOptions& source, bool jsonl, std::istream& input,
     if (token != prepared->confirmation_token) {
         core::Error mismatch{.domain = core::ErrorDomain::Diagnostics,
                              .code = std::string{core::toString(core::ErrorCode::DiagnosticsTokenInvalid)},
-                             .message = "The clear confirmation token does not match"};
+                             .message = "The clear confirmation token does not match",
+                             .context = {}};
         emitError(error, jsonl, mismatch);
         disconnect(engine);
         return static_cast<int>(ExitCode::SafetyRejection);
