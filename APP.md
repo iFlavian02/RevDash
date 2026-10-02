@@ -120,3 +120,9 @@ File publication is transactional at the session level. A recording creates `<na
 Each session gets a `.ridx` sidecar with approximately one-second byte-offset checkpoints plus the source size, content fingerprint, and schema/index versions. Missing, corrupt, or stale indexes are rebuilt from the validated source; they are never trusted across a fingerprint or schema mismatch.
 
 Seek is an engine epoch boundary. The engine clears telemetry and rolling/rule state, derives warmup from the maximum configured active diagnostic-rule window, asks the source to replay from the nearest checkpoint at or before that warmup range, suppresses intermediate presentation events, and publishes the rebuilt state at the target. Recorded findings and Mode 04 audits are historical artifacts exposed separately; current findings always come from the current rule implementation evaluating the replayed OBD evidence.
+
+## Qt presentation boundary
+
+The Stage 8.1 desktop shell links only Qt Core, Gui, Qml, and Quick; Qt Graphs is deliberately absent. `AppController` owns the Qt-independent `EngineService`, marshals worker callbacks through queued GUI-thread invocations, polls immutable telemetry snapshots every 50 ms, and publishes chart batches every 100 ms. Presentation models assert GUI-thread mutation and keep SI-to-Metric/Imperial conversion out of the core.
+
+`TelemetryChartItem` is a bounded Qt Quick scene-graph line primitive. Samples are appended only on the GUI thread, while geometry is rebuilt during the synchronized `updatePaintNode` phase when the GUI thread is blocked, so renderer access does not race presentation state. The QML shell is registered as the `RevDash` module, keeps user-facing strings translation-ready, and provides responsive light/dark automotive styling without an additional charting dependency.

@@ -133,11 +133,30 @@ endif()
 # -----------------------------------------------------------------------------
 # Desktop Qt GUI Application Target
 # -----------------------------------------------------------------------------
-add_executable(revdash_app
-    src/app/main.cpp
-)
-
 if(Qt6_FOUND)
+    qt_standard_project_setup(REQUIRES 6.11)
+
+    qt_add_executable(revdash_app
+        src/app/main.cpp
+        src/app/app_controller.cpp
+        src/app/models.cpp
+        src/app/telemetry_chart_item.cpp
+    )
+
+    qt_add_qml_module(revdash_app
+        URI RevDash
+        VERSION 1.0
+        SOURCES
+            src/app/telemetry_chart_item.hpp
+        QML_FILES
+            qml/Main.qml
+    )
+
+    target_include_directories(revdash_app PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    )
+    target_compile_definitions(revdash_app PRIVATE REVDASH_HAS_QT=1)
     target_link_libraries(revdash_app
         PRIVATE
             revdash_core
@@ -145,8 +164,8 @@ if(Qt6_FOUND)
             Qt6::Quick
             spdlog::spdlog
     )
-    target_compile_definitions(revdash_app PRIVATE REVDASH_HAS_QT=1)
 else()
+    add_executable(revdash_app src/app/main.cpp)
     target_link_libraries(revdash_app
         PRIVATE
             revdash_core
@@ -155,6 +174,11 @@ else()
 endif()
 
 revdash_apply_compiler_options(revdash_app)
+if(Qt6_FOUND AND MSVC)
+    # Qt's AOT-generated QVariant dispatch contains intentionally unreachable
+    # fallback branches when QML uses a required dynamically supplied object.
+    target_compile_options(revdash_app PRIVATE /wd4702)
+endif()
 
 # -----------------------------------------------------------------------------
 # Unit & Integration Tests Target
@@ -230,3 +254,34 @@ revdash_apply_compiler_options(revdash_integration_tests)
 
 add_test(NAME backend_e2e COMMAND revdash_integration_tests "[backend_e2e]")
 set_tests_properties(backend_e2e PROPERTIES LABELS "backend_e2e")
+
+if(Qt6_FOUND)
+    add_executable(revdash_ui_tests
+        tests/ui/test_ui_main.cpp
+        tests/ui/test_ui_shell.cpp
+        src/app/app_controller.cpp
+        src/app/models.cpp
+        src/app/telemetry_chart_item.cpp
+    )
+    target_include_directories(revdash_ui_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/app
+    )
+    target_compile_definitions(revdash_ui_tests PRIVATE REVDASH_QML_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+    target_link_libraries(revdash_ui_tests
+        PRIVATE
+            revdash_core
+            Catch2::Catch2
+            Qt6::Core
+            Qt6::Gui
+            Qt6::Qml
+            Qt6::Quick
+    )
+    revdash_apply_compiler_options(revdash_ui_tests)
+    add_test(NAME ui_shell COMMAND revdash_ui_tests "[ui_shell]")
+    get_filename_component(revdash_qt_bin_dir "${Qt6_DIR}/../../../bin" ABSOLUTE)
+    set_tests_properties(ui_shell PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
+    )
+endif()

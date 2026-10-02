@@ -1658,9 +1658,9 @@ ctest --preset windows-msvc-asan --output-on-failure
 
 ## Step 8.1: Build Qt application shell, adapters, and chart primitive
 
-* [ ] Link UI only against required LGPL-compatible Qt modules.
-* [ ] Do not introduce Qt Graphs by default.
-* [ ] Implement:
+* [x] Link UI only against required LGPL-compatible Qt modules.
+* [x] Do not introduce Qt Graphs by default.
+* [x] Implement:
 
   * `AppController`;
   * `TelemetryModel`;
@@ -1668,20 +1668,20 @@ ctest --preset windows-msvc-asan --output-on-failure
   * `FindingModel`;
   * `SessionModel`;
   * `SourceModel`.
-* [ ] All `QObject` mutations remain on main thread.
-* [ ] Engine commands remain asynchronous.
-* [ ] UI polls/consumes immutable telemetry snapshots at approximately 20 Hz.
-* [ ] Chart data batches update approximately 10 Hz.
-* [ ] Implement custom `TelemetryChartItem` using Qt Quick scene graph.
-* [ ] Bound chart history memory.
-* [ ] Transfer chart data safely between GUI-side state and scene-graph rendering.
-* [ ] Register QML module with `qt_add_qml_module`.
-* [ ] Add:
+* [x] All `QObject` mutations remain on main thread.
+* [x] Engine commands remain asynchronous.
+* [x] UI polls/consumes immutable telemetry snapshots at approximately 20 Hz.
+* [x] Chart data batches update approximately 10 Hz.
+* [x] Implement custom `TelemetryChartItem` using Qt Quick scene graph.
+* [x] Bound chart history memory.
+* [x] Transfer chart data safely between GUI-side state and scene-graph rendering.
+* [x] Register QML module with `qt_add_qml_module`.
+* [x] Add:
 
   * dark/light theme;
   * scalable automotive layout;
   * Metric/Imperial presentation binding.
-* [ ] Keep strings translation-ready.
+* [x] Keep strings translation-ready.
 
 ### Tests
 
