@@ -1741,7 +1741,7 @@ ctest --preset windows-msvc-debug -R connect_workspace --output-on-failure
 
 ## Step 8.3: Implement Live Dashboard workspace
 
-* [ ] Primary telemetry:
+* [x] Primary telemetry:
 
   * RPM;
   * speed;
@@ -1752,20 +1752,20 @@ ctest --preset windows-msvc-debug -R connect_workspace --output-on-failure
   * MAF;
   * trims;
   * voltage.
-* [ ] Rolling charts:
+* [x] Rolling charts:
 
   * 10s;
   * 30s;
   * 120s.
-* [ ] Telemetry-health display:
+* [x] Telemetry-health display:
 
   * actual poll rate;
   * RTT;
   * sample age;
   * queue drops;
   * unsupported/stale indicators.
-* [ ] Apply unit conversion only in presentation layer.
-* [ ] Clearly distinguish stale/unsupported metrics from numeric zero.
+* [x] Apply unit conversion only in presentation layer.
+* [x] Clearly distinguish stale/unsupported metrics from numeric zero.
 
 ### Tests
 

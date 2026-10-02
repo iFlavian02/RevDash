@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QElapsedTimer>
 #include <QTimer>
 
 #include <functional>
@@ -30,6 +31,10 @@ class AppController final : public QObject {
     Q_PROPERTY(int ewmaRttMs READ ewmaRttMs NOTIFY sourceStatusChanged)
     Q_PROPERTY(quint32 retryCount READ retryCount NOTIFY sourceStatusChanged)
     Q_PROPERTY(quint32 errorCount READ errorCount NOTIFY sourceStatusChanged)
+    Q_PROPERTY(double actualPollRate READ actualPollRate NOTIFY telemetryHealthChanged)
+    Q_PROPERTY(qint64 latestSampleAgeMs READ latestSampleAgeMs NOTIFY telemetryHealthChanged)
+    Q_PROPERTY(quint64 sourceQueueDrops READ sourceQueueDrops NOTIFY telemetryHealthChanged)
+    Q_PROPERTY(quint64 recorderQueueDrops READ recorderQueueDrops NOTIFY telemetryHealthChanged)
     Q_PROPERTY(QStringList simulationPresets READ simulationPresets CONSTANT)
     Q_PROPERTY(QString configuredPort READ configuredPort NOTIFY sourceConfigurationChanged)
     Q_PROPERTY(int configuredBaud READ configuredBaud NOTIFY sourceConfigurationChanged)
@@ -60,6 +65,10 @@ public:
     int ewmaRttMs() const noexcept { return ewma_rtt_ms_; }
     quint32 retryCount() const noexcept { return retry_count_; }
     quint32 errorCount() const noexcept { return error_count_; }
+    double actualPollRate() const noexcept { return actual_poll_rate_; }
+    qint64 latestSampleAgeMs() const noexcept { return latest_sample_age_ms_; }
+    quint64 sourceQueueDrops() const noexcept { return source_queue_drops_; }
+    quint64 recorderQueueDrops() const noexcept { return recorder_queue_drops_; }
     QStringList simulationPresets() const;
     QString configuredPort() const { return configured_port_; }
     int configuredBaud() const noexcept { return configured_baud_; }
@@ -81,6 +90,8 @@ signals:
     void sourceOperationsEnabledChanged();
     void sourceStatusChanged();
     void sourceConfigurationChanged();
+    void telemetryHealthChanged();
+    void presentationUnitsChanged();
     void chartSample(int metricId, double value);
 
 private:
@@ -104,6 +115,7 @@ private:
     QTimer telemetry_timer_;
     QTimer chart_timer_;
     QTimer source_status_timer_;
+    QElapsedTimer poll_rate_clock_;
     core::TelemetrySnapshot latest_snapshot_{};
     QString connection_state_{QStringLiteral("Disconnected")};
     QString last_error_;
@@ -117,6 +129,11 @@ private:
     int ewma_rtt_ms_{0};
     quint32 retry_count_{0};
     quint32 error_count_{0};
+    quint64 previous_source_packets_{0};
+    quint64 source_queue_drops_{0};
+    quint64 recorder_queue_drops_{0};
+    double actual_poll_rate_{0.0};
+    qint64 latest_sample_age_ms_{0};
     bool dark_theme_{true};
     bool source_operation_busy_{false};
     bool clear_confirmation_pending_{false};

@@ -149,29 +149,104 @@ ApplicationWindow {
         }
 
         Item {
-            GridView {
-                id: metrics
-                anchors { top: parent.top; left: parent.left; right: root.compact ? parent.right : chartPanel.left; bottom: parent.bottom; rightMargin: root.compact ? 0 : 24 }
-                cellWidth: Math.max(190, width / Math.max(1, Math.floor(width / 220))); cellHeight: 110
-                clip: true; model: root.controller.telemetryModel
-                delegate: Item {
-                    id: metricDelegate
-                    required property string name; required property real value; required property string unit; required property bool valid
-                    width: metrics.cellWidth; height: metrics.cellHeight
-                    Panel {
-                        anchors { fill: parent; margins: 6 }
-                        Caption { anchors { left: parent.left; leftMargin: 16; top: parent.top; topMargin: 14 } text: metricDelegate.name }
-                        Label { anchors { left: parent.left; leftMargin: 16; bottom: parent.bottom; bottomMargin: 15 } text: metricDelegate.valid ? Number(metricDelegate.value).toLocaleString(Qt.locale(), 'f', 1) : "--"; color: metricDelegate.valid ? root.primaryText : root.secondaryText; font.pixelSize: 28; font.bold: true }
-                        Caption { anchors { right: parent.right; rightMargin: 16; bottom: parent.bottom; bottomMargin: 20 } text: metricDelegate.unit }
+            objectName: "dashboardWorkspace"
+            ColumnLayout {
+                anchors.fill: parent; spacing: 16
+                Panel {
+                    objectName: "telemetryHealthPanel"
+                    Layout.fillWidth: true; implicitHeight: 82
+                    RowLayout {
+                        anchors { fill: parent; margins: 16 }
+                        spacing: 28
+                        ColumnLayout { spacing: 3; Caption { text: qsTr("Actual poll rate") } ValueText { objectName: "actualPollRateValue"; text: qsTr("%1 Hz").arg(root.controller.actualPollRate.toFixed(1)) } }
+                        ColumnLayout { spacing: 3; Caption { text: qsTr("EWMA RTT") } ValueText { text: qsTr("%1 ms").arg(root.controller.ewmaRttMs) } }
+                        ColumnLayout { spacing: 3; Caption { text: qsTr("Oldest sample") } ValueText { objectName: "sampleAgeValue"; text: qsTr("%1 ms").arg(root.controller.latestSampleAgeMs) } }
+                        ColumnLayout { spacing: 3; Caption { text: qsTr("Source drops") } ValueText { objectName: "sourceDropsValue"; text: root.controller.sourceQueueDrops; color: root.controller.sourceQueueDrops > 0 ? "#ffb454" : root.primaryText } }
+                        ColumnLayout { spacing: 3; Caption { text: qsTr("Recorder drops") } ValueText { text: root.controller.recorderQueueDrops; color: root.controller.recorderQueueDrops > 0 ? "#ffb454" : root.primaryText } }
+                        Item { Layout.fillWidth: true }
                     }
                 }
-            }
-            Panel {
-                id: chartPanel; visible: !root.compact; width: Math.min(420, parent.width * 0.38)
-                anchors { top: parent.top; right: parent.right; bottom: parent.bottom }
-                Label { id: chartTitle; anchors { top: parent.top; left: parent.left; margins: 20 } text: qsTr("RPM history"); color: root.primaryText; font.pixelSize: 18; font.bold: true }
-                TelemetryChartItem { id: chart; anchors { top: chartTitle.bottom; left: parent.left; right: parent.right; bottom: parent.bottom; margins: 20; topMargin: 30 } metricId: 0; historyCapacity: 600; color: root.accent }
-                Connections { target: root.controller; function onChartSample(metricId, value) { chart.appendSample(metricId, value) } }
+                RowLayout {
+                    Layout.fillWidth: true; Layout.fillHeight: true; spacing: 16
+                    GridView {
+                        id: metrics; objectName: "primaryTelemetryGrid"
+                        Layout.fillWidth: true; Layout.fillHeight: true; Layout.preferredWidth: 650
+                        cellWidth: Math.max(175, width / Math.max(1, Math.floor(width / 205))); cellHeight: 120
+                        clip: true; model: root.controller.telemetryModel
+                        delegate: Item {
+                            id: metricDelegate
+                            required property int metricId
+                            required property string name
+                            required property real value
+                            required property string unit
+                            required property string quality
+                            required property bool valid
+                            required property int sampleAgeMs
+                            required property string stateLabel
+                            width: metrics.cellWidth; height: metrics.cellHeight
+                            Panel {
+                                anchors { fill: parent; margins: 5 }
+                                Caption { anchors { left: parent.left; leftMargin: 14; top: parent.top; topMargin: 12 } text: metricDelegate.name }
+                                Label {
+                                    anchors { left: parent.left; leftMargin: 14; bottom: parent.bottom; bottomMargin: 27 }
+                                    text: metricDelegate.valid ? Number(metricDelegate.value).toLocaleString(Qt.locale(), 'f', 1) : "--"
+                                    color: metricDelegate.valid ? root.primaryText : root.secondaryText; font.pixelSize: 26; font.bold: true
+                                }
+                                Caption { anchors { right: parent.right; rightMargin: 14; bottom: parent.bottom; bottomMargin: 31 } text: metricDelegate.unit }
+                                Caption {
+                                    objectName: "metricStateLabel"
+                                    anchors { left: parent.left; leftMargin: 14; bottom: parent.bottom; bottomMargin: 9 }
+                                    text: metricDelegate.valid ? qsTr("Live / %1 ms").arg(metricDelegate.sampleAgeMs) : metricDelegate.stateLabel
+                                    color: metricDelegate.valid ? root.accent : (metricDelegate.quality === "Stale" ? "#ffb454" : root.secondaryText)
+                                }
+                            }
+                        }
+                    }
+                    Panel {
+                        id: chartPanel; objectName: "rollingChartPanel"
+                        Layout.fillHeight: true; Layout.preferredWidth: root.compact ? 280 : 410
+                        ColumnLayout {
+                            anchors { fill: parent; margins: 18 }
+                            spacing: 12
+                            Label { text: qsTr("Rolling telemetry"); color: root.primaryText; font.pixelSize: 18; font.bold: true }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                ComboBox {
+                                    id: chartMetric; objectName: "chartMetricSelector"; Layout.fillWidth: true
+                                    textRole: "text"; valueRole: "metricId"
+                                    model: [
+                                        { "text": qsTr("RPM"), "metricId": 0 },
+                                        { "text": qsTr("Speed"), "metricId": 1 },
+                                        { "text": qsTr("Throttle"), "metricId": 2 },
+                                        { "text": qsTr("Coolant"), "metricId": 7 },
+                                        { "text": qsTr("Engine load"), "metricId": 5 },
+                                        { "text": qsTr("MAP"), "metricId": 3 },
+                                        { "text": qsTr("MAF"), "metricId": 4 },
+                                        { "text": qsTr("Module voltage"), "metricId": 14 }
+                                    ]
+                                    onCurrentValueChanged: { chart.metricId = Number(currentValue); chart.clear() }
+                                }
+                                ComboBox {
+                                    id: chartRange; objectName: "chartRangeSelector"; Layout.preferredWidth: 105
+                                    model: [qsTr("10 s"), qsTr("30 s"), qsTr("120 s")]
+                                    currentIndex: 1
+                                    onCurrentIndexChanged: chart.historySeconds = currentIndex === 0 ? 10 : (currentIndex === 1 ? 30 : 120)
+                                }
+                            }
+                            TelemetryChartItem {
+                                id: chart; objectName: "telemetryChart"
+                                Layout.fillWidth: true; Layout.fillHeight: true
+                                metricId: 0; historySeconds: 30; color: root.accent
+                            }
+                            Caption { text: qsTr("History is sampled at 10 Hz and bounded to the selected window."); wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        }
+                        Connections {
+                            target: root.controller
+                            function onChartSample(metricId, value) { chart.appendSample(metricId, value) }
+                            function onPresentationUnitsChanged() { chart.clear() }
+                        }
+                    }
+                }
             }
         }
     }

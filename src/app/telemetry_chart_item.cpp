@@ -10,6 +10,13 @@ namespace revdash::app {
 TelemetryChartItem::TelemetryChartItem(QQuickItem* parent):QQuickItem(parent) { setFlag(ItemHasContents, true); }
 void TelemetryChartItem::setMetricId(int value) { if(metric_id_==value)return; metric_id_=value; clear(); emit metricIdChanged(); }
 void TelemetryChartItem::setHistoryCapacity(int value) { value=std::max(2,value); if(history_capacity_==value)return; history_capacity_=value; if(samples_.size()>value)samples_.remove(0,samples_.size()-value); update(); emit historyCapacityChanged(); emit sampleCountChanged(); }
+void TelemetryChartItem::setHistorySeconds(int value) {
+    value = std::clamp(value, 1, 120);
+    if (history_seconds_ == value) return;
+    history_seconds_ = value;
+    setHistoryCapacity(history_seconds_ * 10);
+    emit historySecondsChanged();
+}
 void TelemetryChartItem::setColor(const QColor& value) { if(color_==value)return;color_=value;update();emit colorChanged(); }
 void TelemetryChartItem::appendSample(int metricId,double value) { Q_ASSERT(QThread::currentThread()==thread()); if(metricId!=metric_id_||!std::isfinite(value))return; if(samples_.size()==history_capacity_)samples_.removeFirst(); samples_.append(value); update(); emit sampleCountChanged(); }
 void TelemetryChartItem::clear() { Q_ASSERT(QThread::currentThread()==thread()); if(samples_.isEmpty())return;samples_.clear();update();emit sampleCountChanged(); }

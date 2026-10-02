@@ -2,9 +2,40 @@
 
 #include <QThread>
 
+#include <array>
+#include <chrono>
+
 namespace revdash::app {
 namespace {
 QString text(std::string_view value) { return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size())); }
+constexpr std::array kDashboardMetrics{
+    core::MetricId::Rpm,
+    core::MetricId::VehicleSpeed,
+    core::MetricId::ThrottlePosition,
+    core::MetricId::CoolantTemp,
+    core::MetricId::EngineLoad,
+    core::MetricId::Map,
+    core::MetricId::Maf,
+    core::MetricId::ShortTermFuelTrim1,
+    core::MetricId::LongTermFuelTrim1,
+    core::MetricId::ShortTermFuelTrim2,
+    core::MetricId::LongTermFuelTrim2,
+    core::MetricId::ModuleVoltage,
+};
+QString metricName(core::MetricId id) {
+    switch (id) {
+        case core::MetricId::VehicleSpeed: return QObject::tr("Speed");
+        case core::MetricId::ThrottlePosition: return QObject::tr("Throttle");
+        case core::MetricId::CoolantTemp: return QObject::tr("Coolant");
+        case core::MetricId::EngineLoad: return QObject::tr("Engine load");
+        case core::MetricId::ShortTermFuelTrim1: return QObject::tr("Short trim B1");
+        case core::MetricId::LongTermFuelTrim1: return QObject::tr("Long trim B1");
+        case core::MetricId::ShortTermFuelTrim2: return QObject::tr("Short trim B2");
+        case core::MetricId::LongTermFuelTrim2: return QObject::tr("Long trim B2");
+        case core::MetricId::ModuleVoltage: return QObject::tr("Module voltage");
+        default: return text(core::toString(id));
+    }
+}
 QString ecuText(const std::optional<core::EcuAddress>& ecu) {
     return ecu ? QStringLiteral("0x%1").arg(ecu->value, 0, 16).toUpper() : QString{};
 }
@@ -30,23 +61,33 @@ void assertOwnerThread(const QObject* object) { Q_ASSERT(QThread::currentThread(
 TelemetryModel::TelemetryModel(QObject* parent) : QAbstractListModel(parent) {
     for (std::size_t i = 0; i < core::kMetricCount; ++i) snapshot_.samples[i].metric_id = static_cast<core::MetricId>(i);
 }
-int TelemetryModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : static_cast<int>(core::kMetricCount); }
+int TelemetryModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : static_cast<int>(kDashboardMetrics.size()); }
 QVariant TelemetryModel::data(const QModelIndex& index, int role) const {
     if (!index.isValid() || index.row() < 0 || index.row() >= rowCount()) return {};
-    const auto id = static_cast<core::MetricId>(index.row());
-    const auto& sample = snapshot_.samples[static_cast<std::size_t>(index.row())];
+    const auto id = kDashboardMetrics[static_cast<std::size_t>(index.row())];
+    const auto& sample = snapshot_.get(id);
+    const auto age = std::max(std::chrono::milliseconds{0},
+        std::chrono::duration_cast<std::chrono::milliseconds>(core::MonotonicClock::now() - sample.monotonic_ts));
     switch (role) {
-        case MetricIdRole: return index.row();
-        case NameRole: return text(core::toString(id));
+        case MetricIdRole: return static_cast<int>(id);
+        case NameRole: return metricName(id);
         case ValueRole: return displayValue(id, sample.value, unit_system_);
         case UnitRole: return displayUnit(id, unit_system_);
         case QualityRole: return text(core::toString(sample.quality));
         case ValidRole: return sample.isValid();
+        case SampleAgeMsRole: return static_cast<qlonglong>(age.count());
+        case StateLabelRole:
+            if (sample.quality == core::SampleQuality::Unsupported) return tr("Unsupported");
+            if (sample.quality == core::SampleQuality::Stale) return tr("Stale");
+            if (sample.quality == core::SampleQuality::Dropped) return tr("Dropped");
+            if (sample.quality == core::SampleQuality::Invalid) return tr("Invalid");
+            return tr("Live");
         default: return {};
     }
 }
 QHash<int, QByteArray> TelemetryModel::roleNames() const {
-    return {{MetricIdRole,"metricId"},{NameRole,"name"},{ValueRole,"value"},{UnitRole,"unit"},{QualityRole,"quality"},{ValidRole,"valid"}};
+    return {{MetricIdRole,"metricId"},{NameRole,"name"},{ValueRole,"value"},{UnitRole,"unit"},{QualityRole,"quality"},{ValidRole,"valid"},
+            {SampleAgeMsRole,"sampleAgeMs"},{StateLabelRole,"stateLabel"}};
 }
 void TelemetryModel::setUnitSystem(UnitSystem value) {
     assertOwnerThread(this);
@@ -58,7 +99,24 @@ void TelemetryModel::setUnitSystem(UnitSystem value) {
 void TelemetryModel::setSnapshot(const core::TelemetrySnapshot& snapshot) {
     assertOwnerThread(this);
     snapshot_ = snapshot;
-    emit dataChanged(index(0), index(rowCount()-1), {ValueRole, QualityRole, ValidRole});
+    emit dataChanged(index(0), index(rowCount()-1), {ValueRole, QualityRole, ValidRole, SampleAgeMsRole, StateLabelRole});
+}
+
+double TelemetryModel::presentationValue(core::MetricId id, double value) const {
+    return displayValue(id, value, unit_system_);
+}
+
+qint64 TelemetryModel::maximumSampleAgeMs() const {
+    const auto now = core::MonotonicClock::now();
+    std::chrono::milliseconds maximum{0};
+    bool found = false;
+    for (const auto id : kDashboardMetrics) {
+        const auto& sample = snapshot_.get(id);
+        if (sample.quality == core::SampleQuality::Unsupported) continue;
+        maximum = std::max(maximum, std::chrono::duration_cast<std::chrono::milliseconds>(now - sample.monotonic_ts));
+        found = true;
+    }
+    return found ? std::max<qint64>(0, maximum.count()) : 0;
 }
 
 int DtcModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : static_cast<int>(records_.size()); }

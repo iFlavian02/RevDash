@@ -69,6 +69,7 @@ AppController::AppController(std::unique_ptr<core::EngineService> engine, Serial
     source_status_timer_.setInterval(500);
     connect(&source_status_timer_, &QTimer::timeout, this, &AppController::pollSourceStatus);
     source_status_timer_.start();
+    poll_rate_clock_.start();
     refreshSerialPorts();
 }
 
@@ -88,6 +89,7 @@ void AppController::setDarkTheme(bool value) {
 
 void AppController::setImperial(bool value) {
     telemetry_model_.setUnitSystem(value ? TelemetryModel::UnitSystem::Imperial : TelemetryModel::UnitSystem::Metric);
+    emit presentationUnitsChanged();
 }
 
 void AppController::disconnectSource() {
@@ -145,6 +147,7 @@ void AppController::connectSynthetic(const QString& preset, quint32 seed) {
     const auto config = syntheticConfig(preset_index, seed);
     engine_->setSource(std::make_unique<drivers::SyntheticDataSource>(), [this, config](core::Result<void> result) mutable {
         if (!result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSourceOperation(std::move(result)); }, Qt::QueuedConnection); return; }
+        engine_->setSupportedPids({0x04, 0x05, 0x06, 0x07, 0x0B, 0x0C, 0x0D, 0x0E, 0x11, 0x2F, 0x42, 0x46});
         engine_->connect(config, [this](core::Result<void> connected) { QMetaObject::invokeMethod(this, [this, connected = std::move(connected)]() mutable { finishSourceOperation(std::move(connected)); }, Qt::QueuedConnection); });
     });
 }
@@ -200,17 +203,31 @@ void AppController::pollTelemetry() {
     Q_ASSERT(QThread::currentThread() == thread());
     latest_snapshot_ = engine_->telemetrySnapshot();
     telemetry_model_.setSnapshot(latest_snapshot_);
+    latest_sample_age_ms_ = telemetry_model_.maximumSampleAgeMs();
+    emit telemetryHealthChanged();
 }
 
 void AppController::publishChartBatch() {
     Q_ASSERT(QThread::currentThread() == thread());
     for (std::size_t i = 0; i < core::kMetricCount; ++i) {
         const auto& sample = latest_snapshot_.samples[i];
-        if (sample.isValid()) emit chartSample(static_cast<int>(i), sample.value);
+        if (sample.isValid()) emit chartSample(static_cast<int>(i), telemetry_model_.presentationValue(sample.metric_id, sample.value));
     }
 }
 
 void AppController::pollSourceStatus() {
+    const auto source_health = engine_->sourceQueueHealth();
+    const auto recorder_health = engine_->recorderQueueHealth();
+    const auto elapsed_ms = poll_rate_clock_.restart();
+    if (elapsed_ms > 0) {
+        const auto packet_delta = source_health.popped >= previous_source_packets_
+            ? source_health.popped - previous_source_packets_ : 0;
+        actual_poll_rate_ = static_cast<double>(packet_delta) * 1000.0 / static_cast<double>(elapsed_ms);
+    }
+    previous_source_packets_ = source_health.popped;
+    source_queue_drops_ = source_health.dropped;
+    recorder_queue_drops_ = recorder_health.dropped;
+    emit telemetryHealthChanged();
     engine_->querySourceStatus([this](core::SourceRuntimeStatus status) {
         QMetaObject::invokeMethod(this, [this, status = std::move(status)] {
             adapter_identity_ = QString::fromStdString(status.adapter_identity);

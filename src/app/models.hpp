@@ -17,7 +17,16 @@ class TelemetryModel final : public QAbstractListModel {
 public:
     enum class UnitSystem { Metric, Imperial };
     Q_ENUM(UnitSystem)
-    enum Role { MetricIdRole = Qt::UserRole + 1, NameRole, ValueRole, UnitRole, QualityRole, ValidRole };
+    enum Role {
+        MetricIdRole = Qt::UserRole + 1,
+        NameRole,
+        ValueRole,
+        UnitRole,
+        QualityRole,
+        ValidRole,
+        SampleAgeMsRole,
+        StateLabelRole
+    };
 
     explicit TelemetryModel(QObject* parent = nullptr);
     int rowCount(const QModelIndex& parent = {}) const override;
@@ -26,6 +35,8 @@ public:
     UnitSystem unitSystem() const noexcept { return unit_system_; }
     void setUnitSystem(UnitSystem value);
     void setSnapshot(const core::TelemetrySnapshot& snapshot);
+    [[nodiscard]] double presentationValue(core::MetricId id, double value) const;
+    [[nodiscard]] qint64 maximumSampleAgeMs() const;
 
 signals:
     void unitSystemChanged();
