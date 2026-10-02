@@ -1707,18 +1707,18 @@ ctest --preset windows-msvc-debug -R ui_shell --output-on-failure
 
 ## Step 8.2: Implement Connect workspace
 
-* [ ] Physical ELM327 USB/BT Classic source selection.
-* [ ] Synthetic source selection.
-* [ ] COM dropdown.
-* [ ] Refresh.
-* [ ] Baud selector.
-* [ ] Connection status.
-* [ ] Adapter/protocol identity.
-* [ ] RTT/EWMA.
-* [ ] retry/error counters.
-* [ ] Simulation presets/seed before connection.
-* [ ] Disable incompatible source operations during guarded clear confirmation.
-* [ ] Present actionable connection errors.
+* [x] Physical ELM327 USB/BT Classic source selection.
+* [x] Synthetic source selection.
+* [x] COM dropdown.
+* [x] Refresh.
+* [x] Baud selector.
+* [x] Connection status.
+* [x] Adapter/protocol identity.
+* [x] RTT/EWMA.
+* [x] retry/error counters.
+* [x] Simulation presets/seed before connection.
+* [x] Disable incompatible source operations during guarded clear confirmation.
+* [x] Present actionable connection errors.
 
 ### Tests
 

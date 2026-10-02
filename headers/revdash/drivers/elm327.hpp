@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -69,6 +70,7 @@ private:
     std::unique_ptr<Command> active_command_;
     ElmPromptParser parser_;
     Elm327Stats stats_;
+    mutable std::mutex stats_mutex_;
     std::vector<std::string> raw_lines_;
     std::uint64_t sequence_{0};
     std::uint64_t command_id_{0};

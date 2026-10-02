@@ -162,6 +162,7 @@ if(Qt6_FOUND)
             revdash_core
             Qt6::Core
             Qt6::Quick
+            Qt6::QuickControls2
             spdlog::spdlog
     )
 else()
@@ -259,6 +260,7 @@ if(Qt6_FOUND)
     add_executable(revdash_ui_tests
         tests/ui/test_ui_main.cpp
         tests/ui/test_ui_shell.cpp
+        tests/ui/test_connect_workspace.cpp
         src/app/app_controller.cpp
         src/app/models.cpp
         src/app/telemetry_chart_item.cpp
@@ -276,11 +278,17 @@ if(Qt6_FOUND)
             Qt6::Gui
             Qt6::Qml
             Qt6::Quick
+            Qt6::QuickControls2
     )
     revdash_apply_compiler_options(revdash_ui_tests)
     add_test(NAME ui_shell COMMAND revdash_ui_tests "[ui_shell]")
+    add_test(NAME connect_workspace COMMAND revdash_ui_tests "[connect_workspace]")
     get_filename_component(revdash_qt_bin_dir "${Qt6_DIR}/../../../bin" ABSOLUTE)
     set_tests_properties(ui_shell PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
+    )
+    set_tests_properties(connect_workspace PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
     )

@@ -6,6 +6,7 @@
 
 #include "revdash/core/diagnostic_types.hpp"
 #include "revdash/core/telemetry_types.hpp"
+#include "revdash/drivers/serial_transport.hpp"
 
 namespace revdash::app {
 
@@ -86,6 +87,19 @@ public:
     void setSources(QList<SourceEntry> sources);
 private:
     QList<SourceEntry> sources_;
+};
+
+class SerialPortModel final : public QAbstractListModel {
+    Q_OBJECT
+public:
+    enum Role { PortNameRole = Qt::UserRole + 1, FriendlyNameRole, TransportRole, DescriptionRole };
+    explicit SerialPortModel(QObject* parent = nullptr) : QAbstractListModel(parent) {}
+    int rowCount(const QModelIndex& parent = {}) const override;
+    QVariant data(const QModelIndex& index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+    void setPorts(std::vector<drivers::SerialPortInfo> ports);
+private:
+    std::vector<drivers::SerialPortInfo> ports_;
 };
 
 } // namespace revdash::app

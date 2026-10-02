@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "revdash/drivers/synthetic.hpp"
+#include "revdash/drivers/elm327.hpp"
 #include "revdash/drivers/playback.hpp"
 #include "revdash/protocol/diagnostics.hpp"
 #include "revdash/protocol/mode01.hpp"
@@ -120,13 +121,13 @@ void EngineService::setSource(std::unique_ptr<IDataSource> source, EngineComplet
         if (source_ && source_->connectionState() != ConnectionState::Disconnected) {
             source_->disconnect([this, pending_source, completion = std::move(completion)](Result<void>) mutable {
                 enqueue([this, pending_source, completion = std::move(completion)]() mutable {
-                    source_subscription_.reset(); source_ = std::move(*pending_source); active_config_.reset(); reconnect_at_.reset(); reconnect_attempt_ = 0;
+                    source_subscription_.reset(); source_ = std::move(*pending_source); active_config_.reset(); reconnect_at_.reset(); reconnect_attempt_ = 0; reconnect_count_ = 0;
                     invalidateEpoch(); if (completion) completion(makeSuccess());
                 });
             });
             return;
         }
-        source_subscription_.reset(); source_ = std::move(*pending_source); active_config_.reset(); reconnect_at_.reset(); reconnect_attempt_ = 0;
+        source_subscription_.reset(); source_ = std::move(*pending_source); active_config_.reset(); reconnect_at_.reset(); reconnect_attempt_ = 0; reconnect_count_ = 0;
         invalidateEpoch(); if (completion) completion(makeSuccess());
     });
 }
@@ -376,6 +377,26 @@ void EngineService::stopPlayback(EngineCompletion completion) {
 void EngineService::setSimulationThrottle(double percent, EngineCompletion completion) { enqueue([this, percent, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setThrottle(percent); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
 void EngineService::setSimulationAmbientTemperature(double celsius, EngineCompletion completion) { enqueue([this, celsius, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setAmbientTemperature(celsius); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
 void EngineService::resetSimulation(EngineCompletion completion) { enqueue([this, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->resetSimulation(); invalidateEpoch(); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
+
+void EngineService::querySourceStatus(SourceStatusCompletion completion) {
+    enqueue([this, completion = std::move(completion)] {
+        if (!completion) return;
+        SourceRuntimeStatus status;
+        status.retry_count = reconnect_count_;
+        if (const auto* elm = dynamic_cast<const drivers::Elm327DataSource*>(source_.get())) {
+            const auto stats = elm->stats();
+            status.adapter_identity = stats.adapter_identity;
+            status.protocol = stats.protocol;
+            status.last_rtt = stats.last_rtt;
+            status.ewma_rtt = stats.ewma_rtt;
+            status.error_count = stats.timeout_count + stats.malformed_response_count;
+        } else if (dynamic_cast<const drivers::SyntheticDataSource*>(source_.get())) {
+            status.adapter_identity = "RevDash Synthetic";
+            status.protocol = "Deterministic OBD-II";
+        }
+        completion(std::move(status));
+    });
+}
 void EngineService::setSupportedPids(std::vector<std::uint8_t> pids) { enqueue([this, pids = std::move(pids)]() mutable { scheduler_.setSupportedPids(std::move(pids)); }); }
 void EngineService::setOxygenSensorTopology(std::optional<diagnostics::OxygenSensorTopology> topology) { enqueue([this, topology = std::move(topology)]() mutable { diagnostic_evaluator_.setOxygenSensorTopology(std::move(topology)); }); }
 void EngineService::setDtcDatabase(std::shared_ptr<const diagnostics::DtcDatabase> database) { enqueue([this, database = std::move(database)]() mutable { dtc_database_ = std::move(database); }); }
@@ -530,7 +551,7 @@ void EngineService::handleSourceState(ConnectionState state, const std::optional
 
 void EngineService::scheduleReconnect() {
     if (reconnect_attempt_ >= kReconnectDelays.size()) return;
-    reconnect_at_ = MonotonicClock::now() + kReconnectDelays[reconnect_attempt_++]; reconnecting_ = true;
+    reconnect_at_ = MonotonicClock::now() + kReconnectDelays[reconnect_attempt_++]; ++reconnect_count_; reconnecting_ = true;
 }
 
 void EngineService::attemptReconnect() {

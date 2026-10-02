@@ -10,7 +10,7 @@ find_package(Catch2 3 CONFIG REQUIRED)
 
 # Qt is intentionally installed separately and located through Qt6_ROOT.
 # Qt Graphs is excluded because its licensing does not fit the default project policy.
-find_package(Qt6 6.11.2 COMPONENTS Core Gui Qml Quick QUIET)
+find_package(Qt6 6.11.2 COMPONENTS Core Gui Qml Quick QuickControls2 QUIET)
 
 if(Qt6_FOUND)
     message(STATUS "Qt6 found: ${Qt6_VERSION} at ${Qt6_DIR}")

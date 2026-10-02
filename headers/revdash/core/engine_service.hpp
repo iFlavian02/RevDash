@@ -40,6 +40,17 @@ using ClearConfirmationCompletion = std::function<void(Result<Mode04AuditRecord>
 using EngineEventHandler = std::function<void(const EngineEvent&)>;
 using RecorderHandler = std::function<void(const RecorderPacket&)>;
 
+struct SourceRuntimeStatus {
+    std::string adapter_identity;
+    std::string protocol;
+    std::chrono::milliseconds last_rtt{0};
+    std::chrono::milliseconds ewma_rtt{0};
+    std::uint32_t retry_count{0};
+    std::uint32_t error_count{0};
+};
+
+using SourceStatusCompletion = std::function<void(SourceRuntimeStatus)>;
+
 // Coordinates one IDataSource and the Qt-independent processing pipeline.
 // Public commands are safe from any thread; their completions and event handlers
 // execute on the engine worker and presentation layers must marshal as needed.
@@ -71,6 +82,7 @@ public:
     void setSimulationThrottle(double percent, EngineCompletion completion = {});
     void setSimulationAmbientTemperature(double celsius, EngineCompletion completion = {});
     void resetSimulation(EngineCompletion completion = {});
+    void querySourceStatus(SourceStatusCompletion completion);
 
     // Exposed for source discovery and deterministic service tests.
     void setSupportedPids(std::vector<std::uint8_t> pids);
@@ -135,6 +147,7 @@ private:
     std::optional<DataSourceConfig> active_config_;
     std::optional<MonotonicTimePoint> reconnect_at_;
     std::uint8_t reconnect_attempt_{0};
+    std::uint32_t reconnect_count_{0};
     bool reconnecting_{false};
 
     struct DiagnosticOperation;

@@ -89,4 +89,19 @@ int SourceModel::rowCount(const QModelIndex& parent) const { return parent.isVal
 QVariant SourceModel::data(const QModelIndex& index,int role) const { if(!index.isValid()||index.row()<0||index.row()>=sources_.size())return{}; const auto& item=sources_[index.row()]; switch(role){case TypeRole:return static_cast<int>(item.type);case NameRole:return item.name;case AvailableRole:return item.available;default:return{};} }
 QHash<int,QByteArray> SourceModel::roleNames() const { return {{TypeRole,"sourceType"},{NameRole,"name"},{AvailableRole,"available"}}; }
 void SourceModel::setSources(QList<SourceEntry> sources) { assertOwnerThread(this); beginResetModel(); sources_=std::move(sources); endResetModel(); }
+
+int SerialPortModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : static_cast<int>(ports_.size()); }
+QVariant SerialPortModel::data(const QModelIndex& index, int role) const {
+    if (!index.isValid() || index.row() < 0 || index.row() >= rowCount()) return {};
+    const auto& port = ports_[static_cast<std::size_t>(index.row())];
+    switch (role) {
+        case PortNameRole: return QString::fromStdString(port.port_name);
+        case FriendlyNameRole: return QString::fromStdString(port.friendly_name);
+        case TransportRole: return port.is_bluetooth_spp ? tr("Bluetooth Classic") : tr("USB / serial");
+        case DescriptionRole: return QString::fromStdString(port.device_description);
+        default: return {};
+    }
+}
+QHash<int, QByteArray> SerialPortModel::roleNames() const { return {{PortNameRole,"portName"},{FriendlyNameRole,"friendlyName"},{TransportRole,"transport"},{DescriptionRole,"description"}}; }
+void SerialPortModel::setPorts(std::vector<drivers::SerialPortInfo> ports) { assertOwnerThread(this); beginResetModel(); ports_ = std::move(ports); endResetModel(); }
 } // namespace revdash::app
