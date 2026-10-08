@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QList>
 #include <QString>
+#include <QStringList>
 
 #include "revdash/core/diagnostic_types.hpp"
 #include "revdash/core/telemetry_types.hpp"
@@ -49,7 +50,11 @@ private:
 class DtcModel final : public QAbstractListModel {
     Q_OBJECT
 public:
-    enum Role { CodeRole = Qt::UserRole + 1, StatusRole, SeverityRole, DescriptionRole, EcuRole };
+    enum Role {
+        CodeRole = Qt::UserRole + 1, StatusRole, SeverityRole, DescriptionRole, EcuRole,
+        GroupRole, AdvisoryRole, FailurePointsRole, HasFreezeFrameRole, FreezeFrameTitleRole,
+        FreezeFrameSamplesRole
+    };
     explicit DtcModel(QObject* parent = nullptr) : QAbstractListModel(parent) {}
     int rowCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -62,7 +67,10 @@ private:
 class FindingModel final : public QAbstractListModel {
     Q_OBJECT
 public:
-    enum Role { RuleIdRole = Qt::UserRole + 1, TitleRole, DescriptionRole, SeverityRole, ActiveRole };
+    enum Role {
+        RuleIdRole = Qt::UserRole + 1, TitleRole, DescriptionRole, SeverityRole, ActiveRole,
+        StatusRole, EvidenceRole, LimitationsRole
+    };
     explicit FindingModel(QObject* parent = nullptr) : QAbstractListModel(parent) {}
     int rowCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -70,6 +78,37 @@ public:
     void setFindings(std::vector<core::DiagnosticFinding> findings);
 private:
     std::vector<core::DiagnosticFinding> findings_;
+};
+
+class RawDiagnosticModel final : public QAbstractListModel {
+    Q_OBJECT
+    Q_PROPERTY(bool paused READ paused WRITE setPaused NOTIFY pausedChanged)
+    Q_PROPERTY(QString hexFilter READ hexFilter WRITE setHexFilter NOTIFY hexFilterChanged)
+public:
+    enum Role { LineRole = Qt::UserRole + 1 };
+    static constexpr qsizetype kMaximumLines = 500;
+
+    explicit RawDiagnosticModel(QObject* parent = nullptr) : QAbstractListModel(parent) {}
+    int rowCount(const QModelIndex& parent = {}) const override;
+    QVariant data(const QModelIndex& index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+    bool paused() const noexcept { return paused_; }
+    QString hexFilter() const { return hex_filter_; }
+    void setPaused(bool value);
+    void setHexFilter(const QString& value);
+    void setLines(const std::vector<std::string>& lines);
+    Q_INVOKABLE QString copyText() const;
+
+signals:
+    void pausedChanged();
+    void hexFilterChanged();
+
+private:
+    void rebuildVisible();
+    QStringList lines_;
+    QStringList visible_lines_;
+    QString hex_filter_;
+    bool paused_{false};
 };
 
 struct SessionEntry { QString name; QString path; QString source; QString startedAt; };

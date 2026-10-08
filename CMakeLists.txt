@@ -262,6 +262,7 @@ if(Qt6_FOUND)
         tests/ui/test_ui_shell.cpp
         tests/ui/test_connect_workspace.cpp
         tests/ui/test_dashboard_workspace.cpp
+        tests/ui/test_diagnostics_workspace.cpp
         src/app/app_controller.cpp
         src/app/models.cpp
         src/app/telemetry_chart_item.cpp
@@ -285,17 +286,27 @@ if(Qt6_FOUND)
     add_test(NAME ui_shell COMMAND revdash_ui_tests "[ui_shell]")
     add_test(NAME connect_workspace COMMAND revdash_ui_tests "[connect_workspace]")
     add_test(NAME dashboard_workspace COMMAND revdash_ui_tests "[dashboard_workspace]")
+    add_test(NAME diagnostics_workspace COMMAND revdash_ui_tests "[diagnostics_workspace]")
     get_filename_component(revdash_qt_bin_dir "${Qt6_DIR}/../../../bin" ABSOLUTE)
+    if(WIN32)
+        set(revdash_qpa_platform windows)
+    else()
+        set(revdash_qpa_platform offscreen)
+    endif()
     set_tests_properties(ui_shell PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        ENVIRONMENT "QT_QPA_PLATFORM=${revdash_qpa_platform};QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
     )
     set_tests_properties(connect_workspace PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        ENVIRONMENT "QT_QPA_PLATFORM=${revdash_qpa_platform};QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
     )
     set_tests_properties(dashboard_workspace PROPERTIES
-        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        ENVIRONMENT "QT_QPA_PLATFORM=${revdash_qpa_platform};QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
+    )
+    set_tests_properties(diagnostics_workspace PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=${revdash_qpa_platform};QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
     )
 endif()

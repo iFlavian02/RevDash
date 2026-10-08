@@ -17,6 +17,7 @@ class AppController final : public QObject {
     Q_PROPERTY(TelemetryModel* telemetryModel READ telemetryModel CONSTANT)
     Q_PROPERTY(DtcModel* dtcModel READ dtcModel CONSTANT)
     Q_PROPERTY(FindingModel* findingModel READ findingModel CONSTANT)
+    Q_PROPERTY(RawDiagnosticModel* rawDiagnosticModel READ rawDiagnosticModel CONSTANT)
     Q_PROPERTY(SessionModel* sessionModel READ sessionModel CONSTANT)
     Q_PROPERTY(SourceModel* sourceModel READ sourceModel CONSTANT)
     Q_PROPERTY(SerialPortModel* serialPortModel READ serialPortModel CONSTANT)
@@ -40,6 +41,13 @@ class AppController final : public QObject {
     Q_PROPERTY(int configuredBaud READ configuredBaud NOTIFY sourceConfigurationChanged)
     Q_PROPERTY(quint32 configuredSeed READ configuredSeed NOTIFY sourceConfigurationChanged)
     Q_PROPERTY(QString configuredPreset READ configuredPreset NOTIFY sourceConfigurationChanged)
+    Q_PROPERTY(bool diagnosticBusy READ diagnosticBusy NOTIFY diagnosticStateChanged)
+    Q_PROPERTY(bool clearDtcEnabled READ clearDtcEnabled NOTIFY diagnosticStateChanged)
+    Q_PROPERTY(QString clearPreconditionStatus READ clearPreconditionStatus NOTIFY diagnosticStateChanged)
+    Q_PROPERTY(QString clearWarning READ clearWarning NOTIFY diagnosticStateChanged)
+    Q_PROPERTY(QString clearConfirmationToken READ clearConfirmationToken NOTIFY diagnosticStateChanged)
+    Q_PROPERTY(int clearCountdownSeconds READ clearCountdownSeconds NOTIFY diagnosticStateChanged)
+    Q_PROPERTY(QString clearResult READ clearResult NOTIFY diagnosticStateChanged)
 
 public:
     explicit AppController(QObject* parent = nullptr);
@@ -51,6 +59,7 @@ public:
     TelemetryModel* telemetryModel() noexcept { return &telemetry_model_; }
     DtcModel* dtcModel() noexcept { return &dtc_model_; }
     FindingModel* findingModel() noexcept { return &finding_model_; }
+    RawDiagnosticModel* rawDiagnosticModel() noexcept { return &raw_diagnostic_model_; }
     SessionModel* sessionModel() noexcept { return &session_model_; }
     SourceModel* sourceModel() noexcept { return &source_model_; }
     SerialPortModel* serialPortModel() noexcept { return &serial_port_model_; }
@@ -74,6 +83,13 @@ public:
     int configuredBaud() const noexcept { return configured_baud_; }
     quint32 configuredSeed() const noexcept { return configured_seed_; }
     QString configuredPreset() const { return configured_preset_; }
+    bool diagnosticBusy() const noexcept { return diagnostic_busy_; }
+    bool clearDtcEnabled() const noexcept;
+    QString clearPreconditionStatus() const;
+    QString clearWarning() const { return clear_warning_; }
+    QString clearConfirmationToken() const { return clear_confirmation_token_; }
+    int clearCountdownSeconds() const noexcept { return clear_countdown_seconds_; }
+    QString clearResult() const { return clear_result_; }
 
     Q_INVOKABLE void setDarkTheme(bool value);
     Q_INVOKABLE void setImperial(bool value);
@@ -82,6 +98,13 @@ public:
     Q_INVOKABLE void connectSerial(const QString& port, int baud);
     Q_INVOKABLE void connectSynthetic(const QString& preset, quint32 seed);
     Q_INVOKABLE void setClearConfirmationPending(bool pending);
+    Q_INVOKABLE void scanDiagnostics();
+    Q_INVOKABLE void prepareClearDiagnostics();
+    Q_INVOKABLE void confirmClearDiagnostics(const QString& token);
+    Q_INVOKABLE void cancelClearDiagnostics();
+    Q_INVOKABLE void setRawTerminalPaused(bool paused);
+    Q_INVOKABLE void setRawTerminalHexFilter(const QString& filter);
+    Q_INVOKABLE void copyRawTerminal();
 
 signals:
     void darkThemeChanged();
@@ -93,6 +116,7 @@ signals:
     void telemetryHealthChanged();
     void presentationUnitsChanged();
     void chartSample(int metricId, double value);
+    void diagnosticStateChanged();
 
 private:
     void onEngineEvent(const core::EngineEvent& event);
@@ -102,12 +126,16 @@ private:
     void pollSourceStatus();
     void finishSourceOperation(core::Result<void> result);
     void setSourceOperationBusy(bool busy);
+    void setDiagnosticBusy(bool busy);
+    void updateClearCountdown();
+    void refreshDiagnosticModels();
 
     std::unique_ptr<core::EngineService> engine_;
     core::SubscriptionToken engine_subscription_;
     TelemetryModel telemetry_model_;
     DtcModel dtc_model_;
     FindingModel finding_model_;
+    RawDiagnosticModel raw_diagnostic_model_;
     SessionModel session_model_;
     SourceModel source_model_;
     SerialPortModel serial_port_model_;
@@ -115,6 +143,7 @@ private:
     QTimer telemetry_timer_;
     QTimer chart_timer_;
     QTimer source_status_timer_;
+    QTimer clear_countdown_timer_;
     QElapsedTimer poll_rate_clock_;
     core::TelemetrySnapshot latest_snapshot_{};
     QString connection_state_{QStringLiteral("Disconnected")};
@@ -137,6 +166,13 @@ private:
     bool dark_theme_{true};
     bool source_operation_busy_{false};
     bool clear_confirmation_pending_{false};
+    bool diagnostic_busy_{false};
+    bool configured_physical_source_{false};
+    core::MonotonicTimePoint clear_expires_at_{};
+    QString clear_warning_;
+    QString clear_confirmation_token_;
+    QString clear_result_;
+    int clear_countdown_seconds_{0};
 };
 
 } // namespace revdash::app

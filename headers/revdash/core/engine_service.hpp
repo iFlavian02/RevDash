@@ -94,6 +94,7 @@ public:
     [[nodiscard]] DiagnosticSnapshot diagnosticSnapshot() const;
     [[nodiscard]] std::vector<EcuMetadata> ecuMetadata() const;
     [[nodiscard]] std::vector<Mode04AuditRecord> mode04AuditRecords() const;
+    [[nodiscard]] std::vector<std::string> recentDiagnosticLines() const;
     [[nodiscard]] std::vector<session::HistoricalSessionRecord> historicalPlaybackFindings() const;
     [[nodiscard]] std::vector<session::HistoricalSessionRecord> historicalPlaybackMode04Audits() const;
     [[nodiscard]] std::uint64_t epoch() const noexcept;
@@ -162,6 +163,7 @@ private:
     DiagnosticSnapshot diagnostic_snapshot_;
     std::vector<EcuMetadata> ecu_metadata_;
     std::vector<Mode04AuditRecord> mode04_audits_;
+    std::deque<std::string> recent_diagnostic_lines_;
     std::vector<session::HistoricalSessionRecord> historical_playback_findings_;
     std::vector<session::HistoricalSessionRecord> historical_playback_audits_;
     bool playback_rebuilding_{false};

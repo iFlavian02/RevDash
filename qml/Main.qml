@@ -32,6 +32,7 @@ ApplicationWindow {
                 background: Item {}
                 TabButton { text: qsTr("Connect") }
                 TabButton { text: qsTr("Live Dashboard") }
+                TabButton { text: qsTr("Diagnostics") }
             }
             Label { text: root.controller.connectionState; color: root.controller.connectionState === "Ready" ? root.accent : root.secondaryText }
             Switch { text: qsTr("Imperial"); onToggled: root.controller.setImperial(checked) }
@@ -246,6 +247,175 @@ ApplicationWindow {
                             function onPresentationUnitsChanged() { chart.clear() }
                         }
                     }
+                }
+            }
+        }
+
+        Item {
+            objectName: "diagnosticsWorkspace"
+            ColumnLayout {
+                anchors.fill: parent; spacing: 14
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: qsTr("Diagnostics"); color: root.primaryText; font.pixelSize: 24; font.bold: true }
+                    Item { Layout.fillWidth: true }
+                    Button {
+                        objectName: "scanDiagnosticsButton"; text: root.controller.diagnosticBusy ? qsTr("Scanning…") : qsTr("Scan stored + pending")
+                        enabled: root.controller.connectionState === "Ready" && !root.controller.diagnosticBusy && !root.controller.clearConfirmationPending
+                        onClicked: root.controller.scanDiagnostics()
+                    }
+                    Button {
+                        objectName: "clearDtcButton"; text: qsTr("Clear diagnostic information"); highlighted: true
+                        enabled: root.controller.clearDtcEnabled
+                        onClicked: root.controller.prepareClearDiagnostics()
+                    }
+                }
+                Caption { objectName: "clearPreconditionStatus"; text: root.controller.clearPreconditionStatus; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                Label {
+                    objectName: "clearResultLabel"; visible: root.controller.clearResult.length > 0
+                    text: root.controller.clearResult; color: root.controller.clearResult.indexOf("completed") >= 0 ? root.accent : "#ffb454"
+                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    Layout.fillWidth: true; Layout.fillHeight: true; spacing: 14
+                    Panel {
+                        Layout.fillHeight: true; Layout.fillWidth: true; Layout.preferredWidth: 580
+                        ColumnLayout {
+                            anchors { fill: parent; margins: 16 }
+                            spacing: 10
+                            Label { text: qsTr("Trouble codes"); color: root.primaryText; font.pixelSize: 18; font.bold: true }
+                            ListView {
+                                id: dtcList; objectName: "dtcList"; Layout.fillWidth: true; Layout.fillHeight: true
+                                model: root.controller.dtcModel; clip: true; spacing: 8
+                                section.property: "group"; section.criteria: ViewSection.FullString
+                                section.delegate: Rectangle {
+                                    required property string section
+                                    width: dtcList.width; height: 32; color: "transparent"
+                                    Label { anchors.verticalCenter: parent.verticalCenter; text: parent.section; color: root.accent; font.bold: true }
+                                }
+                                delegate: Rectangle {
+                                    id: dtcRow
+                                    required property string code; required property string status; required property string severity
+                                    required property string description; required property string ecu; required property string advisory
+                                    required property var failurePoints; required property bool hasFreezeFrame
+                                    required property string freezeFrameTitle; required property var freezeFrameSamples
+                                    width: dtcList.width; height: dtcContent.implicitHeight + 20; radius: 7
+                                    color: root.controller.darkTheme ? "#222c33" : "#f3f6f8"
+                                    ColumnLayout {
+                                        id: dtcContent
+                                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                                        spacing: 3
+                                        RowLayout { Layout.fillWidth: true
+                                            ValueText { text: dtcRow.code }
+                                            Caption { text: dtcRow.status + " · " + (dtcRow.ecu || qsTr("Unknown ECU")) }
+                                            Item { Layout.fillWidth: true }
+                                            Label { text: dtcRow.severity; color: dtcRow.severity === "Critical" ? "#ff667a" : (dtcRow.severity === "Warning" ? "#ffb454" : root.accent); font.bold: true }
+                                        }
+                                        Label { text: dtcRow.description || qsTr("No catalog description available"); color: root.primaryText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                        Caption { text: dtcRow.advisory; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                        Caption { visible: dtcRow.failurePoints.length > 0; text: qsTr("Likely checks: %1").arg(dtcRow.failurePoints.join(", ")); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                        Button {
+                                            objectName: "freezeFrameButton"; visible: dtcRow.hasFreezeFrame; text: qsTr("Inspect freeze frame")
+                                            onClicked: { freezeFrameDialog.titleText = dtcRow.freezeFrameTitle; freezeFrameDialog.samples = dtcRow.freezeFrameSamples; freezeFrameDialog.open() }
+                                        }
+                                    }
+                                }
+                                Label { anchors.centerIn: parent; visible: dtcList.count === 0; text: qsTr("No diagnostic scan results yet."); color: root.secondaryText }
+                            }
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillHeight: true; Layout.preferredWidth: 430; spacing: 14
+                        Panel {
+                            Layout.fillWidth: true; Layout.fillHeight: true
+                            ColumnLayout {
+                                anchors { fill: parent; margins: 14 }
+                                spacing: 8
+                                Label { text: qsTr("Heuristic findings"); color: root.primaryText; font.pixelSize: 18; font.bold: true }
+                                ListView {
+                                    id: findingList; objectName: "findingList"; Layout.fillWidth: true; Layout.fillHeight: true; model: root.controller.findingModel; clip: true; spacing: 8
+                                    delegate: Rectangle {
+                                        id: findingRow
+                                        required property string ruleId; required property string title; required property string description
+                                        required property string severity; required property string status; required property var evidence; required property string limitations
+                                        width: findingList.width; height: findingContent.implicitHeight + 18; radius: 7; color: root.controller.darkTheme ? "#222c33" : "#f3f6f8"
+                                        ColumnLayout { id: findingContent
+                                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 9 }
+                                            spacing: 3
+                                            RowLayout { Layout.fillWidth: true
+                                                ValueText { text: findingRow.title }
+                                                Item { Layout.fillWidth: true }
+                                                Caption { text: findingRow.status + " · " + findingRow.severity }
+                                            }
+                                            Caption { text: qsTr("Rule: %1").arg(findingRow.ruleId); Layout.fillWidth: true }
+                                            Label { text: findingRow.description; color: root.primaryText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                            Caption { text: qsTr("Evidence: %1").arg(findingRow.evidence.length ? findingRow.evidence.join("; ") : qsTr("insufficient evidence")); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                            Caption { text: qsTr("Limitations: %1").arg(findingRow.limitations); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Panel {
+                            objectName: "rawDiagnosticTerminal"; Layout.fillWidth: true; Layout.preferredHeight: 210
+                            ColumnLayout {
+                                anchors { fill: parent; margins: 12 }
+                                spacing: 6
+                                RowLayout { Layout.fillWidth: true
+                                    Label { text: qsTr("Raw diagnostic terminal"); color: root.primaryText; font.bold: true }
+                                    Item { Layout.fillWidth: true }
+                                    TextField { objectName: "rawHexFilter"; Layout.preferredWidth: 115; placeholderText: qsTr("Hex filter"); onTextChanged: root.controller.setRawTerminalHexFilter(text) }
+                                    ToolButton { objectName: "pauseRawTerminalButton"; checkable: true; text: checked ? qsTr("Resume") : qsTr("Pause"); onToggled: root.controller.setRawTerminalPaused(checked) }
+                                    ToolButton { objectName: "copyRawTerminalButton"; text: qsTr("Copy"); onClicked: root.controller.copyRawTerminal() }
+                                }
+                                ListView {
+                                    objectName: "rawTerminalList"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true
+                                    model: root.controller.rawDiagnosticModel
+                                    delegate: Label { required property string line; width: ListView.view.width; text: line; color: root.secondaryText; font.family: "monospace"; font.pixelSize: 12 }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: freezeFrameDialog; objectName: "freezeFrameDialog"; modal: true; anchors.centerIn: parent
+        width: Math.min(520, root.width - 60); height: Math.min(500, root.height - 60)
+        property string titleText: ""; property var samples: []
+        title: qsTr("Freeze frame — %1").arg(titleText); standardButtons: Dialog.Close
+        ListView {
+            anchors.fill: parent; model: freezeFrameDialog.samples; clip: true
+            delegate: RowLayout { width: ListView.view.width
+                required property var modelData
+                Label { text: modelData.name; color: root.primaryText; Layout.fillWidth: true }
+                Label { text: Number(modelData.value).toLocaleString(Qt.locale(), 'f', 2) + " " + modelData.unit; color: root.primaryText }
+                Caption { text: modelData.quality }
+            }
+        }
+    }
+
+    Dialog {
+        id: clearDialog; objectName: "clearDtcDialog"; modal: true; anchors.centerIn: parent
+        width: Math.min(560, root.width - 60); visible: root.controller.clearConfirmationPending
+        title: qsTr("Confirm Mode 04 clear")
+        onClosed: root.controller.cancelClearDiagnostics()
+        ColumnLayout {
+            width: parent.width; spacing: 10
+            Label { text: root.controller.clearWarning; color: "#ffb454"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            Caption { text: qsTr("The engine revalidates source, vehicle identity, fresh speed, and stationary state immediately before transmission."); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            Label { text: qsTr("Confirmation expires in %1 s").arg(root.controller.clearCountdownSeconds); color: root.controller.clearCountdownSeconds > 0 ? root.primaryText : "#ff667a"; font.bold: true }
+            Caption { text: qsTr("Type the single-use token exactly:") }
+            ValueText { objectName: "clearConfirmationToken"; text: root.controller.clearConfirmationToken; font.family: "monospace" }
+            TextField { id: clearTokenInput; objectName: "clearTokenInput"; Layout.fillWidth: true; placeholderText: qsTr("Confirmation token") }
+            RowLayout { Layout.alignment: Qt.AlignRight
+                Button { text: qsTr("Cancel"); enabled: !root.controller.diagnosticBusy; onClicked: clearDialog.close() }
+                Button {
+                    objectName: "confirmClearButton"; text: root.controller.diagnosticBusy ? qsTr("Clearing and rescanning…") : qsTr("Clear and rescan"); highlighted: true
+                    enabled: !root.controller.diagnosticBusy && root.controller.clearCountdownSeconds > 0 && clearTokenInput.text === root.controller.clearConfirmationToken
+                    onClicked: root.controller.confirmClearDiagnostics(clearTokenInput.text)
                 }
             }
         }

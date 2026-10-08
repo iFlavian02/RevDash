@@ -47,6 +47,16 @@ struct EngineService::ClearTokenState {
 };
 
 namespace {
+constexpr std::size_t kMaximumDiagnosticLines = 500;
+std::string diagnosticLine(const ObdMessage& message) {
+    std::ostringstream output;
+    if (message.ecu_address) output << "0x" << std::uppercase << std::hex << message.ecu_address->value << "  ";
+    else output << "ECU?  ";
+    for (const auto byte : message.payload()) output << std::setfill('0') << std::setw(2) << static_cast<unsigned int>(byte) << ' ';
+    auto value = output.str();
+    if (!value.empty()) value.pop_back();
+    return value;
+}
 
 constexpr std::array kReconnectDelays{
     std::chrono::milliseconds{500}, std::chrono::milliseconds{1000},
@@ -406,6 +416,10 @@ std::vector<DiagnosticFinding> EngineService::diagnosticFindings() const { retur
 DiagnosticSnapshot EngineService::diagnosticSnapshot() const { std::lock_guard lock(diagnostic_mutex_); return diagnostic_snapshot_; }
 std::vector<EcuMetadata> EngineService::ecuMetadata() const { std::lock_guard lock(diagnostic_mutex_); return ecu_metadata_; }
 std::vector<Mode04AuditRecord> EngineService::mode04AuditRecords() const { std::lock_guard lock(diagnostic_mutex_); return mode04_audits_; }
+std::vector<std::string> EngineService::recentDiagnosticLines() const {
+    std::lock_guard lock(diagnostic_mutex_);
+    return {recent_diagnostic_lines_.begin(), recent_diagnostic_lines_.end()};
+}
 std::vector<session::HistoricalSessionRecord> EngineService::historicalPlaybackFindings() const { std::lock_guard lock(diagnostic_mutex_); return historical_playback_findings_; }
 std::vector<session::HistoricalSessionRecord> EngineService::historicalPlaybackMode04Audits() const { std::lock_guard lock(diagnostic_mutex_); return historical_playback_audits_; }
 std::uint64_t EngineService::epoch() const noexcept { return epoch_.load(std::memory_order_acquire); }
@@ -469,6 +483,15 @@ void EngineService::processPackets() {
     SourceToEnginePacket packet;
     while (source_to_engine_->tryPop(packet)) {
         if (packet.engine_epoch != epoch()) continue;
+        const auto diagnostic_payload = packet.message.payload();
+        if (!diagnostic_payload.empty() &&
+            (diagnostic_payload.front() == 0x42 || diagnostic_payload.front() == 0x43 ||
+             diagnostic_payload.front() == 0x44 || diagnostic_payload.front() == 0x47 ||
+             diagnostic_payload.front() == 0x49 || diagnostic_payload.front() == 0x7F)) {
+            std::lock_guard lock(diagnostic_mutex_);
+            recent_diagnostic_lines_.push_back(diagnosticLine(packet.message));
+            if (recent_diagnostic_lines_.size() > kMaximumDiagnosticLines) recent_diagnostic_lines_.pop_front();
+        }
         handleDiagnosticMessage(packet.message);
         const auto payload = packet.message.payload();
         if (payload.size() >= 2 && payload[0] == 0x41) {

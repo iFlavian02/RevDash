@@ -2,8 +2,10 @@
 
 #include <QThread>
 
+#include <algorithm>
 #include <array>
 #include <chrono>
+#include <utility>
 
 namespace revdash::app {
 namespace {
@@ -38,6 +40,31 @@ QString metricName(core::MetricId id) {
 }
 QString ecuText(const std::optional<core::EcuAddress>& ecu) {
     return ecu ? QStringLiteral("0x%1").arg(ecu->value, 0, 16).toUpper() : QString{};
+}
+QStringList failurePoints(const core::DtcRecord& record) {
+    QStringList result;
+    for (const auto& point : record.likely_failure_points) result.push_back(QString::fromStdString(point));
+    return result;
+}
+QVariantList freezeFrameSamples(const core::DtcRecord& record) {
+    QVariantList result;
+    if (!record.freeze_frame) return result;
+    for (const auto& sample : record.freeze_frame->samples) {
+        QVariantMap row;
+        row.insert(QStringLiteral("name"), metricName(sample.metric_id));
+        row.insert(QStringLiteral("value"), sample.value);
+        row.insert(QStringLiteral("unit"), text(core::getCanonicalUnit(sample.metric_id)));
+        row.insert(QStringLiteral("quality"), text(core::toString(sample.quality)));
+        result.push_back(std::move(row));
+    }
+    return result;
+}
+QString findingLimitations(const core::DiagnosticFinding& finding) {
+    if (finding.rule_id.find("CATALYST") != std::string::npos)
+        return QObject::tr("Requires explicit upstream/downstream oxygen-sensor topology; PID order alone is not sufficient.");
+    if (finding.rule_id.find("THERMOSTAT") != std::string::npos)
+        return QObject::tr("Requires a validated cold-start warm-up window; ambient conditions and driving load can affect the result.");
+    return QObject::tr("Heuristic evidence is advisory and does not replace component-level testing or manufacturer diagnostics.");
 }
 double displayValue(core::MetricId id, double value, TelemetryModel::UnitSystem system) {
     if (system == TelemetryModel::UnitSystem::Imperial) {
@@ -123,19 +150,76 @@ int DtcModel::rowCount(const QModelIndex& parent) const { return parent.isValid(
 QVariant DtcModel::data(const QModelIndex& index, int role) const {
     if (!index.isValid() || index.row() < 0 || index.row() >= rowCount()) return {};
     const auto& item = records_[static_cast<std::size_t>(index.row())];
-    switch(role) { case CodeRole:return QString::fromStdString(item.code); case StatusRole:return text(core::toString(item.status)); case SeverityRole:return text(core::toString(item.severity)); case DescriptionRole:return QString::fromStdString(item.description); case EcuRole:return ecuText(item.ecu_address); default:return {}; }
+    switch(role) {
+        case CodeRole:return QString::fromStdString(item.code);
+        case StatusRole:return text(core::toString(item.status));
+        case SeverityRole:return text(core::toString(item.severity));
+        case DescriptionRole:return QString::fromStdString(item.description);
+        case EcuRole:return ecuText(item.ecu_address);
+        case GroupRole:return item.status == core::DtcStatus::Pending ? tr("Pending") : tr("Stored");
+        case AdvisoryRole:return item.severity == core::Severity::Critical ? tr("Stop and investigate before continued operation.") :
+            (item.severity == core::Severity::Warning ? tr("Inspect soon; verify the listed failure points.") : tr("Monitor and verify if the condition returns."));
+        case FailurePointsRole:return failurePoints(item);
+        case HasFreezeFrameRole:return item.freeze_frame.has_value();
+        case FreezeFrameTitleRole:return item.freeze_frame ? tr("%1 / frame %2").arg(QString::fromStdString(item.freeze_frame->dtc_code)).arg(item.freeze_frame->frame_number) : QString{};
+        case FreezeFrameSamplesRole:return freezeFrameSamples(item);
+        default:return {};
+    }
 }
-QHash<int,QByteArray> DtcModel::roleNames() const { return {{CodeRole,"code"},{StatusRole,"status"},{SeverityRole,"severity"},{DescriptionRole,"description"},{EcuRole,"ecu"}}; }
-void DtcModel::setRecords(std::vector<core::DtcRecord> records) { assertOwnerThread(this); beginResetModel(); records_=std::move(records); endResetModel(); }
+QHash<int,QByteArray> DtcModel::roleNames() const { return {
+    {CodeRole,"code"},{StatusRole,"status"},{SeverityRole,"severity"},{DescriptionRole,"description"},{EcuRole,"ecu"},
+    {GroupRole,"group"},{AdvisoryRole,"advisory"},{FailurePointsRole,"failurePoints"},{HasFreezeFrameRole,"hasFreezeFrame"},
+    {FreezeFrameTitleRole,"freezeFrameTitle"},{FreezeFrameSamplesRole,"freezeFrameSamples"}}; }
+void DtcModel::setRecords(std::vector<core::DtcRecord> records) {
+    assertOwnerThread(this);
+    std::ranges::stable_sort(records, [](const auto& left, const auto& right) {
+        const auto group = [](core::DtcStatus status) { return status == core::DtcStatus::Pending ? 1 : 0; };
+        if (group(left.status) != group(right.status)) return group(left.status) < group(right.status);
+        if (left.code != right.code) return left.code < right.code;
+        return left.ecu_address.value_or(core::EcuAddress{}).value < right.ecu_address.value_or(core::EcuAddress{}).value;
+    });
+    beginResetModel(); records_=std::move(records); endResetModel();
+}
 
 int FindingModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : static_cast<int>(findings_.size()); }
 QVariant FindingModel::data(const QModelIndex& index, int role) const {
     if (!index.isValid() || index.row()<0 || index.row()>=rowCount()) return {};
     const auto& item=findings_[static_cast<std::size_t>(index.row())];
-    switch(role) { case RuleIdRole:return QString::fromStdString(item.rule_id); case TitleRole:return QString::fromStdString(item.title); case DescriptionRole:return QString::fromStdString(item.description); case SeverityRole:return text(core::toString(item.severity)); case ActiveRole:return item.active; default:return {}; }
+    switch(role) { case RuleIdRole:return QString::fromStdString(item.rule_id); case TitleRole:return QString::fromStdString(item.title); case DescriptionRole:return QString::fromStdString(item.description); case SeverityRole:return text(core::toString(item.severity)); case ActiveRole:return item.active; case StatusRole:return item.active ? tr("Active") : tr("Resolved"); case EvidenceRole:{ QStringList evidence; for(const auto& value:item.evidence)evidence.push_back(QString::fromStdString(value)); return evidence; } case LimitationsRole:return findingLimitations(item); default:return {}; }
 }
-QHash<int,QByteArray> FindingModel::roleNames() const { return {{RuleIdRole,"ruleId"},{TitleRole,"title"},{DescriptionRole,"description"},{SeverityRole,"severity"},{ActiveRole,"active"}}; }
+QHash<int,QByteArray> FindingModel::roleNames() const { return {{RuleIdRole,"ruleId"},{TitleRole,"title"},{DescriptionRole,"description"},{SeverityRole,"severity"},{ActiveRole,"active"},{StatusRole,"status"},{EvidenceRole,"evidence"},{LimitationsRole,"limitations"}}; }
 void FindingModel::setFindings(std::vector<core::DiagnosticFinding> findings) { assertOwnerThread(this); beginResetModel(); findings_=std::move(findings); endResetModel(); }
+
+int RawDiagnosticModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : visible_lines_.size(); }
+QVariant RawDiagnosticModel::data(const QModelIndex& index, int role) const {
+    if (!index.isValid() || index.row() < 0 || index.row() >= visible_lines_.size() || role != LineRole) return {};
+    return visible_lines_[index.row()];
+}
+QHash<int, QByteArray> RawDiagnosticModel::roleNames() const { return {{LineRole, "line"}}; }
+void RawDiagnosticModel::setPaused(bool value) { if (paused_ == value) return; paused_ = value; emit pausedChanged(); }
+void RawDiagnosticModel::setHexFilter(const QString& value) {
+    auto normalized = value.toUpper().remove(QLatin1Char(' '));
+    if (hex_filter_ == normalized) return;
+    hex_filter_ = std::move(normalized); rebuildVisible(); emit hexFilterChanged();
+}
+void RawDiagnosticModel::setLines(const std::vector<std::string>& lines) {
+    assertOwnerThread(this);
+    if (paused_) return;
+    lines_.clear();
+    const auto first = lines.size() > static_cast<std::size_t>(kMaximumLines) ? lines.size() - static_cast<std::size_t>(kMaximumLines) : 0;
+    for (auto iterator = lines.begin() + static_cast<std::ptrdiff_t>(first); iterator != lines.end(); ++iterator)
+        lines_.push_back(QString::fromStdString(*iterator));
+    rebuildVisible();
+}
+QString RawDiagnosticModel::copyText() const { return visible_lines_.join(QLatin1Char('\n')); }
+void RawDiagnosticModel::rebuildVisible() {
+    beginResetModel();
+    visible_lines_.clear();
+    for (const auto& line : lines_) {
+        if (hex_filter_.isEmpty() || QString{line}.remove(QLatin1Char(' ')).contains(hex_filter_, Qt::CaseInsensitive)) visible_lines_.push_back(line);
+    }
+    endResetModel();
+}
 
 int SessionModel::rowCount(const QModelIndex& parent) const { return parent.isValid()?0:sessions_.size(); }
 QVariant SessionModel::data(const QModelIndex& index,int role) const { if(!index.isValid()||index.row()<0||index.row()>=sessions_.size())return{}; const auto& item=sessions_[index.row()]; switch(role){case NameRole:return item.name;case PathRole:return item.path;case SourceRole:return item.source;case StartedAtRole:return item.startedAt;default:return{};} }

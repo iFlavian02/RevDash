@@ -1787,23 +1787,23 @@ ctest --preset windows-msvc-debug -R dashboard_workspace --output-on-failure
 
 ## Step 8.4: Implement Diagnostics workspace
 
-* [ ] Stored/pending DTC groups.
-* [ ] ECU source.
-* [ ] DTC descriptions.
-* [ ] severity/advisory presentation.
-* [ ] Freeze-frame inspector.
-* [ ] Heuristic finding panel:
+* [x] Stored/pending DTC groups.
+* [x] ECU source.
+* [x] DTC descriptions.
+* [x] severity/advisory presentation.
+* [x] Freeze-frame inspector.
+* [x] Heuristic finding panel:
 
   * rule;
   * status;
   * evidence;
   * limitations.
-* [ ] Bounded raw diagnostic terminal:
+* [x] Bounded raw diagnostic terminal:
 
   * pause;
   * copy;
   * hex filter.
-* [ ] Guarded Mode 04 dialog:
+* [x] Guarded Mode 04 dialog:
 
   * precondition status;
   * data/readiness-loss warning;

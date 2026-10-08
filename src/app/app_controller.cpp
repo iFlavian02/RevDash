@@ -1,6 +1,8 @@
 #include "app/app_controller.hpp"
 
 #include <QMetaObject>
+#include <QGuiApplication>
+#include <QClipboard>
 #include <QThread>
 
 #include <algorithm>
@@ -54,7 +56,7 @@ AppController::AppController(std::unique_ptr<core::EngineService> engine, QObjec
 
 AppController::AppController(std::unique_ptr<core::EngineService> engine, SerialPortEnumerator port_enumerator, QObject* parent)
     : QObject(parent), engine_(std::move(engine)), telemetry_model_(this), dtc_model_(this),
-      finding_model_(this), session_model_(this), source_model_(this), serial_port_model_(this),
+      finding_model_(this), raw_diagnostic_model_(this), session_model_(this), source_model_(this), serial_port_model_(this),
       port_enumerator_(std::move(port_enumerator)) {
     Q_ASSERT(engine_);
     engine_subscription_ = engine_->subscribe([this](const core::EngineEvent& event) { onEngineEvent(event); });
@@ -69,6 +71,8 @@ AppController::AppController(std::unique_ptr<core::EngineService> engine, Serial
     source_status_timer_.setInterval(500);
     connect(&source_status_timer_, &QTimer::timeout, this, &AppController::pollSourceStatus);
     source_status_timer_.start();
+    clear_countdown_timer_.setInterval(250);
+    connect(&clear_countdown_timer_, &QTimer::timeout, this, &AppController::updateClearCountdown);
     poll_rate_clock_.start();
     refreshSerialPorts();
 }
@@ -77,6 +81,7 @@ AppController::~AppController() {
     telemetry_timer_.stop();
     chart_timer_.stop();
     source_status_timer_.stop();
+    clear_countdown_timer_.stop();
     engine_subscription_.reset();
 }
 
@@ -117,6 +122,7 @@ void AppController::connectSerial(const QString& port, int baud) {
         return;
     }
     configured_port_ = QString::fromStdString(*normalized);
+    configured_physical_source_ = true;
     configured_baud_ = baud;
     emit sourceConfigurationChanged();
     adapter_identity_.clear(); protocol_identity_.clear(); last_rtt_ms_ = 0; ewma_rtt_ms_ = 0; retry_count_ = 0;
@@ -138,6 +144,7 @@ void AppController::connectSynthetic(const QString& preset, quint32 seed) {
         last_error_ = tr("Choose a valid simulation preset."); emit lastErrorChanged(); return;
     }
     configured_preset_ = preset;
+    configured_physical_source_ = false;
     configured_seed_ = seed;
     emit sourceConfigurationChanged();
     adapter_identity_.clear(); protocol_identity_.clear(); last_rtt_ms_ = 0; ewma_rtt_ms_ = 0; retry_count_ = 0;
@@ -157,7 +164,107 @@ void AppController::setClearConfirmationPending(bool pending) {
     if (clear_confirmation_pending_ == pending) return;
     clear_confirmation_pending_ = pending;
     emit sourceOperationsEnabledChanged();
+    emit diagnosticStateChanged();
 }
+
+bool AppController::clearDtcEnabled() const noexcept {
+    return configured_physical_source_ && connection_state_ == QStringLiteral("Ready") && !diagnostic_busy_ && !clear_confirmation_pending_;
+}
+
+QString AppController::clearPreconditionStatus() const {
+    if (connection_state_ != QStringLiteral("Ready")) return tr("Connect a physical ELM327 source before clearing diagnostic information.");
+    if (!configured_physical_source_) return tr("Unavailable for simulation and playback sources.");
+    if (diagnostic_busy_) return tr("Wait for the active diagnostic operation to finish.");
+    return tr("Ready to validate vehicle identity, fresh speed data, and stationary state.");
+}
+
+void AppController::setDiagnosticBusy(bool busy) {
+    if (diagnostic_busy_ == busy) return;
+    diagnostic_busy_ = busy;
+    emit diagnosticStateChanged();
+}
+
+void AppController::refreshDiagnosticModels() {
+    const auto snapshot = engine_->diagnosticSnapshot();
+    dtc_model_.setRecords(snapshot.dtcs);
+    finding_model_.setFindings(engine_->diagnosticFindings());
+    raw_diagnostic_model_.setLines(engine_->recentDiagnosticLines());
+}
+
+void AppController::scanDiagnostics() {
+    if (diagnostic_busy_ || clear_confirmation_pending_ || connection_state_ != QStringLiteral("Ready")) return;
+    setDiagnosticBusy(true);
+    clear_result_.clear(); emit diagnosticStateChanged();
+    engine_->scan([this](core::Result<core::DiagnosticSnapshot> result) {
+        QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable {
+            setDiagnosticBusy(false);
+            if (!result) { last_error_ = actionableError(result.error()); ++error_count_; emit lastErrorChanged(); emit sourceStatusChanged(); return; }
+            refreshDiagnosticModels();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void AppController::prepareClearDiagnostics() {
+    if (!clearDtcEnabled()) return;
+    setDiagnosticBusy(true);
+    clear_result_.clear(); emit diagnosticStateChanged();
+    engine_->prepareClear([this](core::Result<core::ClearDtcPreparation> result) {
+        QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable {
+            setDiagnosticBusy(false);
+            if (!result) { clear_result_ = actionableError(result.error()); emit diagnosticStateChanged(); return; }
+            clear_warning_ = QString::fromStdString(result->warning);
+            clear_confirmation_token_ = QString::fromStdString(result->confirmation_token);
+            clear_expires_at_ = result->expires_at;
+            setClearConfirmationPending(true);
+            updateClearCountdown();
+            clear_countdown_timer_.start();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void AppController::confirmClearDiagnostics(const QString& token) {
+    if (!clear_confirmation_pending_ || diagnostic_busy_ || clear_countdown_seconds_ <= 0) return;
+    setDiagnosticBusy(true);
+    clear_countdown_timer_.stop();
+    engine_->confirmClear(token.toStdString(), [this](core::Result<core::Mode04AuditRecord> result) {
+        QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable {
+            setDiagnosticBusy(false);
+            setClearConfirmationPending(false);
+            clear_confirmation_token_.clear();
+            clear_countdown_seconds_ = 0;
+            if (!result) clear_result_ = actionableError(result.error());
+            else clear_result_ = result->post_clear_rescan_completed
+                ? tr("Clear accepted. Automatic rescan completed with %1 remaining DTC(s).").arg(result->post_clear_dtcs.size())
+                : tr("Clear accepted, but the automatic rescan did not complete.");
+            refreshDiagnosticModels();
+            emit diagnosticStateChanged();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void AppController::cancelClearDiagnostics() {
+    clear_countdown_timer_.stop();
+    clear_confirmation_token_.clear();
+    clear_countdown_seconds_ = 0;
+    setClearConfirmationPending(false);
+}
+
+void AppController::updateClearCountdown() {
+    if (!clear_confirmation_pending_) return;
+    const auto remaining = std::chrono::duration_cast<std::chrono::seconds>(clear_expires_at_ - core::MonotonicClock::now());
+    const auto value = static_cast<int>(std::max<std::int64_t>(0, remaining.count() + 1));
+    if (clear_countdown_seconds_ == value) return;
+    clear_countdown_seconds_ = value;
+    if (value == 0) { clear_countdown_timer_.stop(); clear_result_ = tr("Confirmation token expired. Close this dialog and prepare again."); }
+    emit diagnosticStateChanged();
+}
+
+void AppController::setRawTerminalPaused(bool paused) {
+    raw_diagnostic_model_.setPaused(paused);
+    if (!paused) raw_diagnostic_model_.setLines(engine_->recentDiagnosticLines());
+}
+void AppController::setRawTerminalHexFilter(const QString& filter) { raw_diagnostic_model_.setHexFilter(filter); }
+void AppController::copyRawTerminal() { if (auto* clipboard = QGuiApplication::clipboard()) clipboard->setText(raw_diagnostic_model_.copyText()); }
 
 void AppController::setSourceOperationBusy(bool busy) {
     if (source_operation_busy_ == busy) return;
@@ -184,9 +291,10 @@ void AppController::applyEngineEvent(core::EngineEvent event) {
     if (event.type == core::EngineEventType::ConnectionStateChanged) {
         const auto value = text(core::toString(event.connection_state));
         if (connection_state_ != value) { connection_state_ = value; emit connectionStateChanged(); }
+        emit diagnosticStateChanged();
     }
     if (event.type == core::EngineEventType::DiagnosticDataUpdated) {
-        dtc_model_.setRecords(engine_->diagnosticSnapshot().dtcs);
+        refreshDiagnosticModels();
     }
     if (event.type == core::EngineEventType::DiagnosticFindingsUpdated) {
         finding_model_.setFindings(engine_->diagnosticFindings());
