@@ -64,8 +64,8 @@ Error cancelledError() {
         .domain = ErrorDomain::Core,
         .code = std::string{toString(ErrorCode::CoreCancelled)},
         .message = "Operation cancelled during source shutdown or replacement",
-        .retryable = false
-    };
+        .retryable = false,
+        .context = {}};
 }
 
 Error invalidStateError(std::string message) {
@@ -73,8 +73,8 @@ Error invalidStateError(std::string message) {
         .domain = ErrorDomain::Core,
         .code = std::string{toString(ErrorCode::CoreInvalidState)},
         .message = std::move(message),
-        .retryable = false
-    };
+        .retryable = false,
+        .context = {}};
 }
 
 Error notConnectedError() {
@@ -82,8 +82,8 @@ Error notConnectedError() {
         .domain = ErrorDomain::Transport,
         .code = std::string{toString(ErrorCode::TransportNotConnected)},
         .message = "Cannot transmit while the source is not ready",
-        .retryable = true
-    };
+        .retryable = true,
+        .context = {}};
 }
 
 } // namespace

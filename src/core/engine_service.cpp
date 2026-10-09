@@ -386,7 +386,18 @@ void EngineService::stopPlayback(EngineCompletion completion) {
 
 void EngineService::setSimulationThrottle(double percent, EngineCompletion completion) { enqueue([this, percent, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setThrottle(percent); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
 void EngineService::setSimulationAmbientTemperature(double celsius, EngineCompletion completion) { enqueue([this, celsius, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setAmbientTemperature(celsius); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
+void EngineService::setSimulationFaults(drivers::SimulationFaultConfig faults, EngineCompletion completion) { enqueue([this, faults, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setFaults(faults); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
+void EngineService::setSimulationIgnition(bool enabled, EngineCompletion completion) { enqueue([this, enabled, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setIgnition(enabled); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
+void EngineService::setSimulationEngineRunning(bool running, EngineCompletion completion) { enqueue([this, running, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->setEngineRunning(running); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
 void EngineService::resetSimulation(EngineCompletion completion) { enqueue([this, completion = std::move(completion)]() mutable { if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) { source->resetSimulation(); invalidateEpoch(); if (completion) completion(makeSuccess()); } else if (completion) completion(tl::make_unexpected(invalidState("Simulation controls require the synthetic source"))); }); }
+
+void EngineService::querySimulationState(SimulationStateCompletion completion) {
+    enqueue([this, completion = std::move(completion)]() mutable {
+        if (!completion) return;
+        if (auto* source = dynamic_cast<drivers::SyntheticDataSource*>(source_.get())) completion(source->simulationState());
+        else completion(std::nullopt);
+    });
+}
 
 void EngineService::querySourceStatus(SourceStatusCompletion completion) {
     enqueue([this, completion = std::move(completion)] {

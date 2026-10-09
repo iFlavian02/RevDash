@@ -1834,16 +1834,16 @@ ctest --preset windows-msvc-debug -R diagnostics_workspace --output-on-failure
 
 ## Step 8.5: Implement Simulator workspace
 
-* [ ] Ignition/start controls.
-* [ ] Throttle.
-* [ ] Ambient temperature.
-* [ ] Fault injection.
-* [ ] Noise/dropout controls.
-* [ ] Display:
+* [x] Ignition/start controls.
+* [x] Throttle.
+* [x] Ambient temperature.
+* [x] Fault injection.
+* [x] Noise/dropout controls.
+* [x] Display:
 
   * true physical state;
   * noisy OBD-observed state.
-* [ ] Disable simulator controls when a physical source is active.
+* [x] Disable simulator controls when a physical source is active.
 
 ### Tests
 

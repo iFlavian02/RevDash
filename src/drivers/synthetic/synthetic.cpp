@@ -72,6 +72,12 @@ void SyntheticPowertrain::reset() {
     idle_integral_ = 0.0;
     step_count_ = 0;
     freeze_frame_.reset();
+    ignition_on_ = true;
+    engine_running_ = config_.initial_rpm > 0.0;
+    if (!engine_running_) {
+        state_.rpm = 0.0;
+        state_.module_voltage = 12.4;
+    }
 }
 
 void SyntheticPowertrain::advance(std::chrono::milliseconds elapsed) {
@@ -85,13 +91,41 @@ void SyntheticPowertrain::advance(std::chrono::milliseconds elapsed) {
 void SyntheticPowertrain::setThrottle(double percent) noexcept { state_.throttle_percent = clamp(percent, 0.0, 100.0); }
 void SyntheticPowertrain::setAmbientTemperature(double celsius) noexcept { config_.ambient_temp_c = clamp(celsius, -40.0, 80.0); }
 void SyntheticPowertrain::setFaults(SimulationFaultConfig faults) noexcept { faults_ = faults; faults_.sensor_noise_std_dev = std::max(0.0, faults_.sensor_noise_std_dev); faults_.packet_dropout_probability = clamp(faults_.packet_dropout_probability, 0.0, 1.0); }
+void SyntheticPowertrain::setIgnition(bool enabled) noexcept {
+    ignition_on_ = enabled;
+    if (!enabled) setEngineRunning(false);
+}
+void SyntheticPowertrain::setEngineRunning(bool running) noexcept {
+    engine_running_ = running && ignition_on_;
+    state_.rpm = engine_running_ ? std::max(state_.rpm, config_.idle_rpm) : 0.0;
+    state_.module_voltage = engine_running_ ? 14.1 : (ignition_on_ ? 12.4 : 0.0);
+}
 const SimulationConfig& SyntheticPowertrain::config() const noexcept { return config_; }
 const PowertrainState& SyntheticPowertrain::trueState() const noexcept { return state_; }
+SimulationRuntimeState SyntheticPowertrain::runtimeState() const noexcept {
+    return {.physical = state_, .faults = faults_, .ambient_temp_c = config_.ambient_temp_c,
+            .ignition_on = ignition_on_, .engine_running = engine_running_};
+}
 
 void SyntheticPowertrain::step() {
     constexpr double dt = 0.01;
     const auto throttle = state_.throttle_percent / 100.0;
     const auto speed_mps = state_.vehicle_speed_kph / 3.6;
+    if (!engine_running_) {
+        const auto drag = 0.5 * kAirDensityKgPerM3 * config_.drag_coefficient * config_.frontal_area_m2 * speed_mps * speed_mps;
+        const auto rolling = state_.vehicle_speed_kph > 0.0 ? config_.rolling_resistance * config_.vehicle_mass_kg * kGravityMps2 : 0.0;
+        state_.vehicle_speed_kph = clamp(state_.vehicle_speed_kph - (drag + rolling) / config_.vehicle_mass_kg * dt * 3.6, 0.0, 255.0);
+        state_.rpm = 0.0;
+        state_.map_kpa = ignition_on_ ? 101.0 : 0.0;
+        state_.maf_g_per_s = 0.0;
+        state_.short_term_fuel_trim_percent = 0.0;
+        state_.long_term_fuel_trim_percent = 0.0;
+        state_.timing_advance_deg = 0.0;
+        state_.module_voltage = ignition_on_ ? 12.4 : 0.0;
+        state_.coolant_temp_c += (config_.ambient_temp_c - state_.coolant_temp_c) * 0.002 * dt;
+        ++step_count_;
+        return;
+    }
     const auto normalized_rpm = clamp(state_.rpm / config_.redline_rpm, 0.0, 1.0);
     const auto torque_shape = std::max(0.25, 1.0 - std::pow(normalized_rpm - 0.50, 2.0) * 2.0);
     auto engine_torque = config_.peak_torque_nm * throttle * torque_shape;
@@ -181,7 +215,14 @@ SyntheticDataSource::SyntheticDataSource() : AsyncDataSource(core::DataSourceTyp
 void SyntheticDataSource::setThrottle(double percent) { postToWorker([this, percent] { powertrain_.setThrottle(percent); }); }
 void SyntheticDataSource::setAmbientTemperature(double celsius) { postToWorker([this, celsius] { powertrain_.setAmbientTemperature(celsius); }); }
 void SyntheticDataSource::setFaults(SimulationFaultConfig faults) { postToWorker([this, faults] { powertrain_.setFaults(faults); }); }
+void SyntheticDataSource::setIgnition(bool enabled) { postToWorker([this, enabled] { powertrain_.setIgnition(enabled); }); }
+void SyntheticDataSource::setEngineRunning(bool running) { postToWorker([this, running] { powertrain_.setEngineRunning(running); }); }
 void SyntheticDataSource::resetSimulation() { postToWorker([this] { powertrain_.reset(); sequence_ = 0; }); }
+SimulationRuntimeState SyntheticDataSource::simulationState() {
+    SimulationRuntimeState state;
+    synchronizeWorker([this, &state] { state = powertrain_.runtimeState(); });
+    return state;
+}
 
 void SyntheticDataSource::startConnect(const core::DataSourceConfig& config, core::CompletionCallback completion) {
     const auto* synthetic = std::get_if<core::SyntheticConfig>(&config);

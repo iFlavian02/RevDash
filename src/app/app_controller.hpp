@@ -48,6 +48,24 @@ class AppController final : public QObject {
     Q_PROPERTY(QString clearConfirmationToken READ clearConfirmationToken NOTIFY diagnosticStateChanged)
     Q_PROPERTY(int clearCountdownSeconds READ clearCountdownSeconds NOTIFY diagnosticStateChanged)
     Q_PROPERTY(QString clearResult READ clearResult NOTIFY diagnosticStateChanged)
+    Q_PROPERTY(bool simulatorControlsEnabled READ simulatorControlsEnabled NOTIFY simulatorStateChanged)
+    Q_PROPERTY(bool simulationIgnitionOn READ simulationIgnitionOn NOTIFY simulatorStateChanged)
+    Q_PROPERTY(bool simulationEngineRunning READ simulationEngineRunning NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationThrottle READ simulationThrottle NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationAmbientTemperature READ simulationAmbientTemperature NOTIFY simulatorStateChanged)
+    Q_PROPERTY(bool simulationMisfire READ simulationMisfire NOTIFY simulatorStateChanged)
+    Q_PROPERTY(bool simulationVacuumLeak READ simulationVacuumLeak NOTIFY simulatorStateChanged)
+    Q_PROPERTY(bool simulationThermostatFault READ simulationThermostatFault NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationNoise READ simulationNoise NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationDropout READ simulationDropout NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationTrueRpm READ simulationTrueRpm NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationTrueSpeed READ simulationTrueSpeed NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationTrueCoolant READ simulationTrueCoolant NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationTrueMap READ simulationTrueMap NOTIFY simulatorStateChanged)
+    Q_PROPERTY(double simulationObservedRpm READ simulationObservedRpm NOTIFY telemetryHealthChanged)
+    Q_PROPERTY(double simulationObservedSpeed READ simulationObservedSpeed NOTIFY telemetryHealthChanged)
+    Q_PROPERTY(double simulationObservedCoolant READ simulationObservedCoolant NOTIFY telemetryHealthChanged)
+    Q_PROPERTY(double simulationObservedMap READ simulationObservedMap NOTIFY telemetryHealthChanged)
 
 public:
     explicit AppController(QObject* parent = nullptr);
@@ -90,6 +108,24 @@ public:
     QString clearConfirmationToken() const { return clear_confirmation_token_; }
     int clearCountdownSeconds() const noexcept { return clear_countdown_seconds_; }
     QString clearResult() const { return clear_result_; }
+    bool simulatorControlsEnabled() const noexcept { return !configured_physical_source_ && connection_state_ == QStringLiteral("Ready"); }
+    bool simulationIgnitionOn() const noexcept { return simulation_state_.ignition_on; }
+    bool simulationEngineRunning() const noexcept { return simulation_state_.engine_running; }
+    double simulationThrottle() const noexcept { return simulation_state_.physical.throttle_percent; }
+    double simulationAmbientTemperature() const noexcept { return simulation_state_.ambient_temp_c; }
+    bool simulationMisfire() const noexcept { return simulation_state_.faults.misfire; }
+    bool simulationVacuumLeak() const noexcept { return simulation_state_.faults.vacuum_leak; }
+    bool simulationThermostatFault() const noexcept { return simulation_state_.faults.stuck_open_thermostat; }
+    double simulationNoise() const noexcept { return simulation_state_.faults.sensor_noise_std_dev; }
+    double simulationDropout() const noexcept { return simulation_state_.faults.packet_dropout_probability; }
+    double simulationTrueRpm() const noexcept { return simulation_state_.physical.rpm; }
+    double simulationTrueSpeed() const noexcept { return simulation_state_.physical.vehicle_speed_kph; }
+    double simulationTrueCoolant() const noexcept { return simulation_state_.physical.coolant_temp_c; }
+    double simulationTrueMap() const noexcept { return simulation_state_.physical.map_kpa; }
+    double simulationObservedRpm() const noexcept;
+    double simulationObservedSpeed() const noexcept;
+    double simulationObservedCoolant() const noexcept;
+    double simulationObservedMap() const noexcept;
 
     Q_INVOKABLE void setDarkTheme(bool value);
     Q_INVOKABLE void setImperial(bool value);
@@ -105,6 +141,12 @@ public:
     Q_INVOKABLE void setRawTerminalPaused(bool paused);
     Q_INVOKABLE void setRawTerminalHexFilter(const QString& filter);
     Q_INVOKABLE void copyRawTerminal();
+    Q_INVOKABLE void setSimulationIgnition(bool enabled);
+    Q_INVOKABLE void setSimulationEngineRunning(bool running);
+    Q_INVOKABLE void setSimulationThrottle(double percent);
+    Q_INVOKABLE void setSimulationAmbientTemperature(double celsius);
+    Q_INVOKABLE void setSimulationFaults(bool misfire, bool vacuumLeak, bool thermostatFault, double noise, double dropout);
+    Q_INVOKABLE void resetSimulation();
 
 signals:
     void darkThemeChanged();
@@ -117,6 +159,7 @@ signals:
     void presentationUnitsChanged();
     void chartSample(int metricId, double value);
     void diagnosticStateChanged();
+    void simulatorStateChanged();
 
 private:
     void onEngineEvent(const core::EngineEvent& event);
@@ -129,6 +172,8 @@ private:
     void setDiagnosticBusy(bool busy);
     void updateClearCountdown();
     void refreshDiagnosticModels();
+    void finishSimulationCommand(core::Result<void> result);
+    double observedMetric(core::MetricId metric) const noexcept;
 
     std::unique_ptr<core::EngineService> engine_;
     core::SubscriptionToken engine_subscription_;
@@ -173,6 +218,7 @@ private:
     QString clear_confirmation_token_;
     QString clear_result_;
     int clear_countdown_seconds_{0};
+    drivers::SimulationRuntimeState simulation_state_{};
 };
 
 } // namespace revdash::app

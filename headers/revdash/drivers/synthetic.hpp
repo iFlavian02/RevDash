@@ -53,6 +53,14 @@ struct PowertrainState {
     double module_voltage{14.1};
 };
 
+struct SimulationRuntimeState {
+    PowertrainState physical;
+    SimulationFaultConfig faults;
+    double ambient_temp_c{20.0};
+    bool ignition_on{true};
+    bool engine_running{true};
+};
+
 class SyntheticPowertrain {
 public:
     static constexpr auto kPhysicsStep = std::chrono::milliseconds{10};
@@ -64,9 +72,12 @@ public:
     void setThrottle(double percent) noexcept;
     void setAmbientTemperature(double celsius) noexcept;
     void setFaults(SimulationFaultConfig faults) noexcept;
+    void setIgnition(bool enabled) noexcept;
+    void setEngineRunning(bool running) noexcept;
 
     [[nodiscard]] const SimulationConfig& config() const noexcept;
     [[nodiscard]] const PowertrainState& trueState() const noexcept;
+    [[nodiscard]] SimulationRuntimeState runtimeState() const noexcept;
     [[nodiscard]] PowertrainState sensorState();
     [[nodiscard]] bool shouldDropPacket();
     [[nodiscard]] std::vector<core::DtcRecord> storedDtcs() const;
@@ -86,6 +97,8 @@ private:
     std::uint64_t step_count_{0};
     std::mt19937 random_;
     std::optional<core::FreezeFrame> freeze_frame_;
+    bool ignition_on_{true};
+    bool engine_running_{true};
 };
 
 class SyntheticDataSource final : public core::AsyncDataSource {
@@ -95,7 +108,10 @@ public:
     void setThrottle(double percent);
     void setAmbientTemperature(double celsius);
     void setFaults(SimulationFaultConfig faults);
+    void setIgnition(bool enabled);
+    void setEngineRunning(bool running);
     void resetSimulation();
+    [[nodiscard]] SimulationRuntimeState simulationState();
 
 protected:
     void startConnect(const core::DataSourceConfig& config, core::CompletionCallback completion) override;

@@ -6,6 +6,7 @@
 #include <QThread>
 
 #include <algorithm>
+#include <limits>
 
 #include "revdash/drivers/elm327.hpp"
 #include "revdash/drivers/serial_transport.hpp"
@@ -123,6 +124,7 @@ void AppController::connectSerial(const QString& port, int baud) {
     }
     configured_port_ = QString::fromStdString(*normalized);
     configured_physical_source_ = true;
+    emit simulatorStateChanged();
     configured_baud_ = baud;
     emit sourceConfigurationChanged();
     adapter_identity_.clear(); protocol_identity_.clear(); last_rtt_ms_ = 0; ewma_rtt_ms_ = 0; retry_count_ = 0;
@@ -152,6 +154,12 @@ void AppController::connectSynthetic(const QString& preset, quint32 seed) {
     setSourceOperationBusy(true);
     last_error_.clear(); emit lastErrorChanged();
     const auto config = syntheticConfig(preset_index, seed);
+    simulation_state_.ambient_temp_c = config.ambient_temp_c;
+    simulation_state_.physical.rpm = config.initial_rpm;
+    simulation_state_.faults = {.misfire = config.inject_misfire, .vacuum_leak = config.inject_vacuum_leak,
+        .stuck_open_thermostat = config.inject_thermostat_fault, .sensor_noise_std_dev = config.noise_std_dev,
+        .packet_dropout_probability = config.packet_dropout_prob};
+    emit simulatorStateChanged();
     engine_->setSource(std::make_unique<drivers::SyntheticDataSource>(), [this, config](core::Result<void> result) mutable {
         if (!result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSourceOperation(std::move(result)); }, Qt::QueuedConnection); return; }
         engine_->setSupportedPids({0x04, 0x05, 0x06, 0x07, 0x0B, 0x0C, 0x0D, 0x0E, 0x11, 0x2F, 0x42, 0x46});
@@ -266,6 +274,62 @@ void AppController::setRawTerminalPaused(bool paused) {
 void AppController::setRawTerminalHexFilter(const QString& filter) { raw_diagnostic_model_.setHexFilter(filter); }
 void AppController::copyRawTerminal() { if (auto* clipboard = QGuiApplication::clipboard()) clipboard->setText(raw_diagnostic_model_.copyText()); }
 
+double AppController::observedMetric(core::MetricId metric) const noexcept {
+    const auto& sample = latest_snapshot_.get(metric);
+    return sample.isValid() ? sample.value : std::numeric_limits<double>::quiet_NaN();
+}
+double AppController::simulationObservedRpm() const noexcept { return observedMetric(core::MetricId::Rpm); }
+double AppController::simulationObservedSpeed() const noexcept { return observedMetric(core::MetricId::VehicleSpeed); }
+double AppController::simulationObservedCoolant() const noexcept { return observedMetric(core::MetricId::CoolantTemp); }
+double AppController::simulationObservedMap() const noexcept { return observedMetric(core::MetricId::Map); }
+
+void AppController::finishSimulationCommand(core::Result<void> result) {
+    if (result) return;
+    last_error_ = actionableError(result.error());
+    ++error_count_;
+    emit lastErrorChanged();
+    emit sourceStatusChanged();
+}
+
+void AppController::setSimulationIgnition(bool enabled) {
+    if (!simulatorControlsEnabled()) return;
+    simulation_state_.ignition_on = enabled;
+    if (!enabled) simulation_state_.engine_running = false;
+    emit simulatorStateChanged();
+    engine_->setSimulationIgnition(enabled, [this](core::Result<void> result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSimulationCommand(std::move(result)); }, Qt::QueuedConnection); });
+}
+void AppController::setSimulationEngineRunning(bool running) {
+    if (!simulatorControlsEnabled() || (running && !simulation_state_.ignition_on)) return;
+    simulation_state_.engine_running = running;
+    emit simulatorStateChanged();
+    engine_->setSimulationEngineRunning(running, [this](core::Result<void> result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSimulationCommand(std::move(result)); }, Qt::QueuedConnection); });
+}
+void AppController::setSimulationThrottle(double percent) {
+    if (!simulatorControlsEnabled()) return;
+    percent = std::clamp(percent, 0.0, 100.0);
+    simulation_state_.physical.throttle_percent = percent;
+    emit simulatorStateChanged();
+    engine_->setSimulationThrottle(percent, [this](core::Result<void> result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSimulationCommand(std::move(result)); }, Qt::QueuedConnection); });
+}
+void AppController::setSimulationAmbientTemperature(double celsius) {
+    if (!simulatorControlsEnabled()) return;
+    celsius = std::clamp(celsius, -40.0, 80.0);
+    simulation_state_.ambient_temp_c = celsius;
+    emit simulatorStateChanged();
+    engine_->setSimulationAmbientTemperature(celsius, [this](core::Result<void> result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSimulationCommand(std::move(result)); }, Qt::QueuedConnection); });
+}
+void AppController::setSimulationFaults(bool misfire, bool vacuumLeak, bool thermostatFault, double noise, double dropout) {
+    if (!simulatorControlsEnabled()) return;
+    simulation_state_.faults = {.misfire = misfire, .vacuum_leak = vacuumLeak, .stuck_open_thermostat = thermostatFault,
+        .sensor_noise_std_dev = std::clamp(noise, 0.0, 25.0), .packet_dropout_probability = std::clamp(dropout, 0.0, 1.0)};
+    emit simulatorStateChanged();
+    engine_->setSimulationFaults(simulation_state_.faults, [this](core::Result<void> result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSimulationCommand(std::move(result)); }, Qt::QueuedConnection); });
+}
+void AppController::resetSimulation() {
+    if (!simulatorControlsEnabled()) return;
+    engine_->resetSimulation([this](core::Result<void> result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSimulationCommand(std::move(result)); }, Qt::QueuedConnection); });
+}
+
 void AppController::setSourceOperationBusy(bool busy) {
     if (source_operation_busy_ == busy) return;
     source_operation_busy_ = busy;
@@ -291,6 +355,7 @@ void AppController::applyEngineEvent(core::EngineEvent event) {
     if (event.type == core::EngineEventType::ConnectionStateChanged) {
         const auto value = text(core::toString(event.connection_state));
         if (connection_state_ != value) { connection_state_ = value; emit connectionStateChanged(); }
+        emit simulatorStateChanged();
         emit diagnosticStateChanged();
     }
     if (event.type == core::EngineEventType::DiagnosticDataUpdated) {
@@ -345,6 +410,13 @@ void AppController::pollSourceStatus() {
             retry_count_ = status.retry_count;
             error_count_ = std::max(error_count_, status.error_count);
             emit sourceStatusChanged();
+        }, Qt::QueuedConnection);
+    });
+    engine_->querySimulationState([this](std::optional<drivers::SimulationRuntimeState> state) {
+        if (!state) return;
+        QMetaObject::invokeMethod(this, [this, state = *state] {
+            simulation_state_ = state;
+            emit simulatorStateChanged();
         }, Qt::QueuedConnection);
     });
 }

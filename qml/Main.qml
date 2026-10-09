@@ -33,6 +33,7 @@ ApplicationWindow {
                 TabButton { text: qsTr("Connect") }
                 TabButton { text: qsTr("Live Dashboard") }
                 TabButton { text: qsTr("Diagnostics") }
+                TabButton { text: qsTr("Simulator") }
             }
             Label { text: root.controller.connectionState; color: root.controller.connectionState === "Ready" ? root.accent : root.secondaryText }
             Switch { text: qsTr("Imperial"); onToggled: root.controller.setImperial(checked) }
@@ -375,6 +376,81 @@ ApplicationWindow {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        Item {
+            objectName: "simulatorWorkspace"
+            RowLayout {
+                anchors.fill: parent; spacing: 16
+                ColumnLayout {
+                    Layout.fillHeight: true; Layout.preferredWidth: 480; spacing: 14
+                    Label { text: qsTr("Simulator controls"); color: root.primaryText; font.pixelSize: 24; font.bold: true }
+                    Rectangle {
+                        objectName: "simulatorLockout"; visible: !root.controller.simulatorControlsEnabled
+                        Layout.fillWidth: true; implicitHeight: simulatorLockText.implicitHeight + 26; radius: 8
+                        color: root.controller.darkTheme ? "#3b2d12" : "#fff0cf"; border.color: "#d99b39"
+                        Label {
+                            id: simulatorLockText; anchors { fill: parent; margins: 13 } color: root.controller.darkTheme ? "#ffd58a" : "#704c08"
+                            text: root.controller.connectionState === "Ready" ? qsTr("Controls are locked while a physical source is active.") : qsTr("Connect a synthetic source to enable simulator controls.")
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    Panel {
+                        objectName: "simulatorControlPanel"; Layout.fillWidth: true; Layout.fillHeight: true
+                        enabled: root.controller.simulatorControlsEnabled
+                        opacity: enabled ? 1.0 : 0.55
+                        ColumnLayout {
+                            anchors { fill: parent; margins: 18 } spacing: 10
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Switch { objectName: "simulationIgnitionSwitch"; text: qsTr("Ignition"); checked: root.controller.simulationIgnitionOn; onClicked: root.controller.setSimulationIgnition(checked) }
+                                Button {
+                                    objectName: "simulationStartButton"; Layout.fillWidth: true
+                                    text: root.controller.simulationEngineRunning ? qsTr("Stop engine") : qsTr("Start engine")
+                                    enabled: root.controller.simulatorControlsEnabled && root.controller.simulationIgnitionOn
+                                    onClicked: root.controller.setSimulationEngineRunning(!root.controller.simulationEngineRunning)
+                                }
+                                Button { objectName: "simulationResetButton"; text: qsTr("Reset"); onClicked: root.controller.resetSimulation() }
+                            }
+                            Caption { text: qsTr("Throttle — %1%").arg(root.controller.simulationThrottle.toFixed(0)) }
+                            Slider { objectName: "simulationThrottleSlider"; Layout.fillWidth: true; from: 0; to: 100; stepSize: 1; value: root.controller.simulationThrottle; onMoved: root.controller.setSimulationThrottle(value) }
+                            Caption { text: qsTr("Ambient temperature — %1 °C").arg(root.controller.simulationAmbientTemperature.toFixed(0)) }
+                            Slider { objectName: "simulationAmbientSlider"; Layout.fillWidth: true; from: -40; to: 80; stepSize: 1; value: root.controller.simulationAmbientTemperature; onMoved: root.controller.setSimulationAmbientTemperature(value) }
+                            Label { text: qsTr("Fault injection"); color: root.primaryText; font.bold: true }
+                            RowLayout {
+                                CheckBox { id: misfireFault; objectName: "simulationMisfireToggle"; text: qsTr("Misfire"); checked: root.controller.simulationMisfire; onClicked: root.controller.setSimulationFaults(checked, vacuumFault.checked, thermostatFault.checked, noiseSlider.value, dropoutSlider.value) }
+                                CheckBox { id: vacuumFault; objectName: "simulationVacuumToggle"; text: qsTr("Vacuum leak"); checked: root.controller.simulationVacuumLeak; onClicked: root.controller.setSimulationFaults(misfireFault.checked, checked, thermostatFault.checked, noiseSlider.value, dropoutSlider.value) }
+                                CheckBox { id: thermostatFault; objectName: "simulationThermostatToggle"; text: qsTr("Thermostat"); checked: root.controller.simulationThermostatFault; onClicked: root.controller.setSimulationFaults(misfireFault.checked, vacuumFault.checked, checked, noiseSlider.value, dropoutSlider.value) }
+                            }
+                            Caption { text: qsTr("Sensor noise σ — %1").arg(root.controller.simulationNoise.toFixed(2)) }
+                            Slider { id: noiseSlider; objectName: "simulationNoiseSlider"; Layout.fillWidth: true; from: 0; to: 5; stepSize: 0.05; value: root.controller.simulationNoise; onMoved: root.controller.setSimulationFaults(misfireFault.checked, vacuumFault.checked, thermostatFault.checked, value, dropoutSlider.value) }
+                            Caption { text: qsTr("Packet dropout — %1%").arg((root.controller.simulationDropout * 100).toFixed(0)) }
+                            Slider { id: dropoutSlider; objectName: "simulationDropoutSlider"; Layout.fillWidth: true; from: 0; to: 1; stepSize: 0.01; value: root.controller.simulationDropout; onMoved: root.controller.setSimulationFaults(misfireFault.checked, vacuumFault.checked, thermostatFault.checked, noiseSlider.value, value) }
+                            Caption { text: qsTr("Deterministic seed: %1").arg(root.controller.configuredSeed); Layout.fillWidth: true }
+                        }
+                    }
+                }
+                Panel {
+                    objectName: "simulationStatePanel"; Layout.fillWidth: true; Layout.fillHeight: true
+                    ColumnLayout {
+                        anchors { fill: parent; margins: 20 } spacing: 12
+                        Label { text: qsTr("Physical vs OBD-observed"); color: root.primaryText; font.pixelSize: 20; font.bold: true }
+                        Caption { text: qsTr("True state comes from the physics model. OBD values include configured noise, quantization, and packet dropout."); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        GridLayout {
+                            Layout.fillWidth: true; columns: 3; columnSpacing: 24; rowSpacing: 14
+                            Caption { text: qsTr("Metric") } Caption { text: qsTr("True physical") } Caption { text: qsTr("OBD observed") }
+                            ValueText { text: qsTr("Engine speed") } ValueText { objectName: "simulationTrueRpm"; text: qsTr("%1 rpm").arg(root.controller.simulationTrueRpm.toFixed(0)) } ValueText { objectName: "simulationObservedRpm"; text: Number.isFinite(root.controller.simulationObservedRpm) ? qsTr("%1 rpm").arg(root.controller.simulationObservedRpm.toFixed(0)) : qsTr("No sample") }
+                            ValueText { text: qsTr("Vehicle speed") } ValueText { text: qsTr("%1 km/h").arg(root.controller.simulationTrueSpeed.toFixed(1)) } ValueText { text: Number.isFinite(root.controller.simulationObservedSpeed) ? qsTr("%1 km/h").arg(root.controller.simulationObservedSpeed.toFixed(1)) : qsTr("No sample") }
+                            ValueText { text: qsTr("Coolant") } ValueText { text: qsTr("%1 °C").arg(root.controller.simulationTrueCoolant.toFixed(1)) } ValueText { text: Number.isFinite(root.controller.simulationObservedCoolant) ? qsTr("%1 °C").arg(root.controller.simulationObservedCoolant.toFixed(1)) : qsTr("No sample") }
+                            ValueText { text: qsTr("Manifold pressure") } ValueText { text: qsTr("%1 kPa").arg(root.controller.simulationTrueMap.toFixed(1)) } ValueText { text: Number.isFinite(root.controller.simulationObservedMap) ? qsTr("%1 kPa").arg(root.controller.simulationObservedMap.toFixed(1)) : qsTr("No sample") }
+                        }
+                        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.controller.darkTheme ? "#34414a" : "#d6dde1" }
+                        Caption { text: qsTr("Ignition") } ValueText { text: root.controller.simulationIgnitionOn ? qsTr("On") : qsTr("Off") }
+                        Caption { text: qsTr("Engine") } ValueText { text: root.controller.simulationEngineRunning ? qsTr("Running") : qsTr("Stopped") }
+                        Item { Layout.fillHeight: true }
                     }
                 }
             }

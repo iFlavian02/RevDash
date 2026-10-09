@@ -19,6 +19,7 @@
 #include "revdash/diagnostics/rule_evaluator.hpp"
 #include "revdash/diagnostics/dtc_database.hpp"
 #include "revdash/drivers/pid_scheduler.hpp"
+#include "revdash/drivers/synthetic.hpp"
 #include "revdash/session/session_recorder.hpp"
 
 namespace revdash::core {
@@ -50,6 +51,7 @@ struct SourceRuntimeStatus {
 };
 
 using SourceStatusCompletion = std::function<void(SourceRuntimeStatus)>;
+using SimulationStateCompletion = std::function<void(std::optional<drivers::SimulationRuntimeState>)>;
 
 // Coordinates one IDataSource and the Qt-independent processing pipeline.
 // Public commands are safe from any thread; their completions and event handlers
@@ -81,7 +83,11 @@ public:
     void stopPlayback(EngineCompletion completion = {});
     void setSimulationThrottle(double percent, EngineCompletion completion = {});
     void setSimulationAmbientTemperature(double celsius, EngineCompletion completion = {});
+    void setSimulationFaults(drivers::SimulationFaultConfig faults, EngineCompletion completion = {});
+    void setSimulationIgnition(bool enabled, EngineCompletion completion = {});
+    void setSimulationEngineRunning(bool running, EngineCompletion completion = {});
     void resetSimulation(EngineCompletion completion = {});
+    void querySimulationState(SimulationStateCompletion completion);
     void querySourceStatus(SourceStatusCompletion completion);
 
     // Exposed for source discovery and deterministic service tests.
