@@ -4,13 +4,21 @@
 #include <QGuiApplication>
 #include <QClipboard>
 #include <QThread>
+#include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
+#include <QStandardPaths>
 
 #include <algorithm>
+#include <fstream>
 #include <limits>
+#include <nlohmann/json.hpp>
 
 #include "revdash/drivers/elm327.hpp"
 #include "revdash/drivers/serial_transport.hpp"
 #include "revdash/drivers/synthetic.hpp"
+#include "revdash/drivers/playback.hpp"
+#include "revdash/session/csv_exporter.hpp"
 
 namespace revdash::app {
 namespace {
@@ -47,6 +55,49 @@ core::SyntheticConfig syntheticConfig(int preset_index, quint32 seed) {
     }
     return config;
 }
+
+QString humanSize(qint64 bytes) {
+    if (bytes < 1024) return QObject::tr("%1 B").arg(bytes);
+    if (bytes < 1024 * 1024) return QObject::tr("%1 KB").arg(bytes / 1024.0, 0, 'f', 1);
+    return QObject::tr("%1 MB").arg(bytes / (1024.0 * 1024.0), 0, 'f', 1);
+}
+
+SessionEntry inspectSession(const QFileInfo& info) {
+    SessionEntry entry{.name = info.completeBaseName(), .path = info.absoluteFilePath(),
+        .fileSize = humanSize(info.size()), .fileSizeBytes = info.size(), .recoverable = info.suffix() == QStringLiteral("partial")};
+    std::ifstream input{std::filesystem::path{info.absoluteFilePath().toStdWString()}};
+    std::string line;
+    bool header_seen = false;
+    while (std::getline(input, line)) {
+        auto parsed = nlohmann::json::parse(line, nullptr, false);
+        if (parsed.is_discarded() || !parsed.is_object()) continue;
+        entry.durationUs = std::max(entry.durationUs, static_cast<qint64>(parsed.value("elapsed_us", std::int64_t{0})));
+        const auto type = parsed.value("type", std::string{});
+        if (type == "header" && !header_seen) {
+            header_seen = true;
+            entry.startedAt = QString::fromStdString(parsed.value("utc_start", std::string{}));
+            entry.source = QString::fromStdString(parsed.value("source_type", std::string{}));
+            if (const auto vehicles = parsed.find("vehicle_metadata"); vehicles != parsed.end() && vehicles->is_array()) {
+                QStringList vins;
+                for (const auto& vehicle : *vehicles) {
+                    const auto vin = QString::fromStdString(vehicle.value("vin", std::string{}));
+                    if (!vin.isEmpty()) vins.push_back(vin);
+                }
+                vins.removeDuplicates();
+                entry.vehicle = vins.join(QStringLiteral(", "));
+            }
+        } else if (type == "dtc") {
+            ++entry.dtcCount;
+        } else if (type == "footer") {
+            if (const auto statistics = parsed.find("statistics"); statistics != parsed.end() && statistics->is_object())
+                entry.dtcCount = statistics->value("dtcs", entry.dtcCount);
+        }
+    }
+    if (entry.startedAt.isEmpty()) entry.startedAt = info.lastModified().toUTC().toString(Qt::ISODate);
+    if (entry.source.isEmpty()) entry.source = QObject::tr("Unknown");
+    if (entry.vehicle.isEmpty()) entry.vehicle = QObject::tr("Vehicle not identified");
+    return entry;
+}
 }
 
 AppController::AppController(QObject* parent)
@@ -57,7 +108,7 @@ AppController::AppController(std::unique_ptr<core::EngineService> engine, QObjec
 
 AppController::AppController(std::unique_ptr<core::EngineService> engine, SerialPortEnumerator port_enumerator, QObject* parent)
     : QObject(parent), engine_(std::move(engine)), telemetry_model_(this), dtc_model_(this),
-      finding_model_(this), raw_diagnostic_model_(this), session_model_(this), source_model_(this), serial_port_model_(this),
+      finding_model_(this), raw_diagnostic_model_(this), session_model_(this), dtc_lookup_model_(this), source_model_(this), serial_port_model_(this),
       port_enumerator_(std::move(port_enumerator)) {
     Q_ASSERT(engine_);
     engine_subscription_ = engine_->subscribe([this](const core::EngineEvent& event) { onEngineEvent(event); });
@@ -75,6 +126,9 @@ AppController::AppController(std::unique_ptr<core::EngineService> engine, Serial
     clear_countdown_timer_.setInterval(250);
     connect(&clear_countdown_timer_, &QTimer::timeout, this, &AppController::updateClearCountdown);
     poll_rate_clock_.start();
+    loadSettings();
+    refreshSessions();
+    loadDtcDatabase();
     refreshSerialPorts();
 }
 
@@ -90,12 +144,134 @@ void AppController::setDarkTheme(bool value) {
     Q_ASSERT(QThread::currentThread() == thread());
     if (dark_theme_ == value) return;
     dark_theme_ = value;
+    if (settings_) settings_->setValue(QStringLiteral("appearance/darkTheme"), value);
     emit darkThemeChanged();
 }
 
 void AppController::setImperial(bool value) {
     telemetry_model_.setUnitSystem(value ? TelemetryModel::UnitSystem::Imperial : TelemetryModel::UnitSystem::Metric);
+    if (settings_) settings_->setValue(QStringLiteral("appearance/imperial"), value);
     emit presentationUnitsChanged();
+}
+
+QString AppController::validatedDirectory(const QString& stored, const QString& fallbackLeaf) const {
+    auto base = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+    if (base.isEmpty()) base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    QString candidate = stored.trimmed();
+    if (candidate.isEmpty()) candidate = QDir(base).filePath(QStringLiteral("RevDash/%1").arg(fallbackLeaf));
+    const auto ensureDirectory = [](const QString& path) {
+        const QFileInfo info(path);
+        return info.isDir() || (!info.exists() && QDir().mkpath(path) && QFileInfo(path).isDir());
+    };
+    if (!ensureDirectory(candidate)) {
+        candidate = QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(fallbackLeaf);
+        if (!ensureDirectory(candidate)) {
+            candidate = QDir(QDir::tempPath()).filePath(QStringLiteral("RevDash/%1").arg(fallbackLeaf));
+            static_cast<void>(ensureDirectory(candidate));
+        }
+    }
+    return QDir(candidate).absolutePath();
+}
+
+void AppController::loadSettings() {
+    settings_ = std::make_unique<QSettings>();
+    dark_theme_ = settings_->value(QStringLiteral("appearance/darkTheme"), true).toBool();
+    telemetry_model_.setUnitSystem(settings_->value(QStringLiteral("appearance/imperial"), false).toBool()
+        ? TelemetryModel::UnitSystem::Imperial : TelemetryModel::UnitSystem::Metric);
+    session_path_ = validatedDirectory(settings_->value(QStringLiteral("paths/sessions")).toString(), QStringLiteral("Sessions"));
+    export_path_ = validatedDirectory(settings_->value(QStringLiteral("paths/exports")).toString(), QStringLiteral("Exports"));
+    preferred_port_ = settings_->value(QStringLiteral("connection/port")).toString();
+    preferred_baud_ = settings_->value(QStringLiteral("connection/baud"), 38400).toInt();
+    if (!drivers::isSupportedSerialBaudRate(static_cast<std::uint32_t>(std::max(0, preferred_baud_)))) preferred_baud_ = 38400;
+    dtc_database_path_ = settings_->value(QStringLiteral("paths/dtcDatabase"),
+        QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).filePath(QStringLiteral("dtc.sqlite"))).toString();
+    settings_->setValue(QStringLiteral("paths/sessions"), session_path_);
+    settings_->setValue(QStringLiteral("paths/exports"), export_path_);
+}
+
+void AppController::setSessionPath(const QString& value) {
+    const QFileInfo requested(value.trimmed());
+    const auto resolved = requested.exists() && !requested.isDir() && QFileInfo(session_path_).isDir()
+        ? session_path_ : validatedDirectory(value, QStringLiteral("Sessions"));
+    if (session_path_ == resolved) return; session_path_ = resolved; settings_->setValue(QStringLiteral("paths/sessions"), resolved); refreshSessions(); emit settingsChanged();
+}
+void AppController::setExportPath(const QString& value) {
+    const QFileInfo requested(value.trimmed());
+    const auto resolved = requested.exists() && !requested.isDir() && QFileInfo(export_path_).isDir()
+        ? export_path_ : validatedDirectory(value, QStringLiteral("Exports"));
+    if (export_path_ == resolved) return; export_path_ = resolved; settings_->setValue(QStringLiteral("paths/exports"), resolved); emit settingsChanged();
+}
+void AppController::setPreferredPort(const QString& value) { if (preferred_port_ == value) return; preferred_port_=value; settings_->setValue(QStringLiteral("connection/port"), value); emit settingsChanged(); }
+void AppController::setPreferredBaud(int value) { if (value < 0 || !drivers::isSupportedSerialBaudRate(static_cast<std::uint32_t>(value)) || preferred_baud_ == value) return; preferred_baud_=value; settings_->setValue(QStringLiteral("connection/baud"), value); emit settingsChanged(); }
+void AppController::setDtcDatabasePath(const QString& value) { if (dtc_database_path_ == value) return; dtc_database_path_=QDir::cleanPath(value); settings_->setValue(QStringLiteral("paths/dtcDatabase"), dtc_database_path_); loadDtcDatabase(); emit settingsChanged(); }
+
+void AppController::refreshSessions() {
+    QList<SessionEntry> sessions;
+    QDir directory(session_path_);
+    const auto files = directory.entryInfoList({QStringLiteral("*.jsonl"), QStringLiteral("*.partial")}, QDir::Files, QDir::Time);
+    sessions.reserve(files.size());
+    for (const auto& file : files) sessions.push_back(inspectSession(file));
+    session_model_.setSessions(std::move(sessions));
+}
+
+void AppController::selectSession(int row) {
+    const auto* entry = session_model_.entry(row);
+    if (!entry) return;
+    selected_session_path_ = entry->path;
+    playback_duration_us_ = entry->durationUs;
+    playback_position_us_ = 0;
+    session_action_message_ = entry->recoverable ? tr("Recoverable partial sessions cannot be played or exported until repaired.") : QString{};
+    emit playbackChanged();
+}
+
+void AppController::playSession() {
+    if (selected_session_path_.isEmpty() || selected_session_path_.endsWith(QStringLiteral(".partial"), Qt::CaseInsensitive)) return;
+    if (configured_physical_source_ || connection_state_ != QStringLiteral("Ready") || playback_state_ == QStringLiteral("Stopped")) {
+        configured_physical_source_ = false;
+        setSourceOperationBusy(true);
+        auto path = selected_session_path_.toStdString();
+        engine_->setSource(std::make_unique<drivers::PlaybackDataSource>(), [this, path = std::move(path)](core::Result<void> result) mutable {
+            if (!result) { QMetaObject::invokeMethod(this, [this, result = std::move(result)]() mutable { finishSourceOperation(std::move(result)); }, Qt::QueuedConnection); return; }
+            engine_->connect(core::PlaybackConfig{.session_file_path=path,.speed_multiplier=playback_speed_}, [this](core::Result<void> connected) mutable {
+                if (!connected) { QMetaObject::invokeMethod(this, [this, connected=std::move(connected)]() mutable { finishSourceOperation(std::move(connected)); }, Qt::QueuedConnection); return; }
+                engine_->startPlayback([this](core::Result<void> started) { QMetaObject::invokeMethod(this, [this, started=std::move(started)]() mutable { setSourceOperationBusy(false); finishPlaybackCommand(std::move(started), QStringLiteral("Playing")); }, Qt::QueuedConnection); });
+            });
+        });
+        return;
+    }
+    engine_->startPlayback([this](core::Result<void> result) { QMetaObject::invokeMethod(this, [this,result=std::move(result)]() mutable { finishPlaybackCommand(std::move(result), QStringLiteral("Playing")); }, Qt::QueuedConnection); });
+}
+void AppController::pauseSession() { engine_->pausePlayback([this](core::Result<void> r){ QMetaObject::invokeMethod(this,[this,r=std::move(r)]() mutable { finishPlaybackCommand(std::move(r),QStringLiteral("Paused")); },Qt::QueuedConnection); }); }
+void AppController::stepSession() { engine_->stepPlayback([this](core::Result<void> r){ QMetaObject::invokeMethod(this,[this,r=std::move(r)]() mutable { finishPlaybackCommand(std::move(r),QStringLiteral("Paused")); },Qt::QueuedConnection); }); }
+void AppController::stopSession() { engine_->stopPlayback([this](core::Result<void> r){ QMetaObject::invokeMethod(this,[this,r=std::move(r)]() mutable { playback_position_us_=0; finishPlaybackCommand(std::move(r),QStringLiteral("Stopped")); },Qt::QueuedConnection); }); }
+void AppController::seekSession(qint64 targetUs) { targetUs=std::clamp<qint64>(targetUs,0,playback_duration_us_); engine_->seekPlayback(std::chrono::microseconds{targetUs},[this,targetUs](core::Result<void> r){ QMetaObject::invokeMethod(this,[this,targetUs,r=std::move(r)]() mutable { if(r)playback_position_us_=targetUs; finishPlaybackCommand(std::move(r)); },Qt::QueuedConnection); }); }
+void AppController::setSessionSpeed(double multiplier) { if (multiplier!=0.5&&multiplier!=1.0&&multiplier!=2.0&&multiplier!=5.0)return; playback_speed_=multiplier; engine_->setPlaybackSpeed(multiplier,[this](core::Result<void> r){ QMetaObject::invokeMethod(this,[this,r=std::move(r)]() mutable { finishPlaybackCommand(std::move(r)); },Qt::QueuedConnection); }); emit playbackChanged(); }
+void AppController::finishPlaybackCommand(core::Result<void> result, const QString& successState) { if(!result){session_action_message_=actionableError(result.error());}else{if(!successState.isEmpty())playback_state_=successState;session_action_message_.clear();}emit playbackChanged(); }
+
+void AppController::exportSelectedSession(const QString& destination, int preset) {
+    if (selected_session_path_.isEmpty() || selected_session_path_.endsWith(QStringLiteral(".partial"), Qt::CaseInsensitive)) return;
+    auto output=destination.trimmed(); if(output.isEmpty()) output=QDir(export_path_).filePath(QFileInfo(selected_session_path_).completeBaseName()+QStringLiteral(".csv"));
+    if(!output.endsWith(QStringLiteral(".csv"),Qt::CaseInsensitive))output+=QStringLiteral(".csv");
+    session::CsvExportOptions options{.preset=static_cast<session::CsvPreset>(std::clamp(preset,0,2)),.units=imperial()?session::UnitSystem::Imperial:session::UnitSystem::Metric};
+    const auto result=session::exportSessionCsv(std::filesystem::path{selected_session_path_.toStdWString()},std::filesystem::path{output.toStdWString()},options);
+    session_action_message_=result?tr("Exported %1").arg(QDir::toNativeSeparators(output)):actionableError(result.error()); emit playbackChanged();
+}
+
+void AppController::loadDtcDatabase() {
+    dtc_database_.reset(); dtc_lookup_model_.clear();
+    auto result=diagnostics::DtcDatabase::openReadOnly(std::filesystem::path{dtc_database_path_.toStdWString()},diagnostics::DtcDatabaseKind::Production);
+    if(!result){dtc_database_status_=tr("Production DTC database unavailable. Choose a licensed database file to enable lookup.");engine_->setDtcDatabase({});}
+    else{dtc_database_=std::make_shared<diagnostics::DtcDatabase>(std::move(*result));dtc_database_status_=tr("DTC database loaded — %1").arg(QString::fromStdString(dtc_database_->metadata().source_version));engine_->setDtcDatabase(dtc_database_);}
+    emit dtcLookupChanged();
+}
+void AppController::lookupDtc(const QString& query) {
+    dtc_lookup_model_.clear();
+    if(!dtc_database_){dtc_lookup_message_=dtc_database_status_;emit dtcLookupChanged();return;}
+    const auto normalized=query.trimmed(); if(normalized.isEmpty()){dtc_lookup_message_=tr("Enter a five-character DTC or diagnostic keywords.");emit dtcLookupChanged();return;}
+    std::vector<diagnostics::DtcDefinition> definitions;
+    if(normalized.size()==5 && (normalized.startsWith(QLatin1Char('P'),Qt::CaseInsensitive)||normalized.startsWith(QLatin1Char('B'),Qt::CaseInsensitive)||normalized.startsWith(QLatin1Char('C'),Qt::CaseInsensitive)||normalized.startsWith(QLatin1Char('U'),Qt::CaseInsensitive))){auto r=dtc_database_->lookupExact(normalized.toStdString());if(r&&r->known)definitions.push_back(*r);else if(!r){dtc_lookup_message_=actionableError(r.error());emit dtcLookupChanged();return;}}
+    else{auto r=dtc_database_->searchKeywords(normalized.toStdString());if(!r){dtc_lookup_message_=actionableError(r.error());emit dtcLookupChanged();return;}definitions=std::move(*r);}
+    dtc_lookup_message_=definitions.empty()?tr("No matching diagnostic codes found."):tr("%1 result(s)").arg(definitions.size());dtc_lookup_model_.setDefinitions(std::move(definitions));emit dtcLookupChanged();
 }
 
 void AppController::disconnectSource() {
@@ -417,6 +593,19 @@ void AppController::pollSourceStatus() {
         QMetaObject::invokeMethod(this, [this, state = *state] {
             simulation_state_ = state;
             emit simulatorStateChanged();
+        }, Qt::QueuedConnection);
+    });
+    engine_->queryPlaybackState([this](std::optional<core::PlaybackRuntimeStatus> state) {
+        if (!state) return;
+        QMetaObject::invokeMethod(this, [this, state = *state] {
+            playback_position_us_ = state.position.count();
+            playback_duration_us_ = state.duration.count();
+            switch (state.state) {
+                case drivers::PlaybackState::Playing: playback_state_ = QStringLiteral("Playing"); break;
+                case drivers::PlaybackState::Paused: playback_state_ = QStringLiteral("Paused"); break;
+                case drivers::PlaybackState::Stopped: playback_state_ = QStringLiteral("Stopped"); break;
+            }
+            emit playbackChanged();
         }, Qt::QueuedConnection);
     });
 }

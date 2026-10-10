@@ -3,6 +3,7 @@
 #include <QObject>
 #include <QElapsedTimer>
 #include <QTimer>
+#include <QSettings>
 
 #include <functional>
 #include <memory>
@@ -19,9 +20,24 @@ class AppController final : public QObject {
     Q_PROPERTY(FindingModel* findingModel READ findingModel CONSTANT)
     Q_PROPERTY(RawDiagnosticModel* rawDiagnosticModel READ rawDiagnosticModel CONSTANT)
     Q_PROPERTY(SessionModel* sessionModel READ sessionModel CONSTANT)
+    Q_PROPERTY(DtcLookupModel* dtcLookupModel READ dtcLookupModel CONSTANT)
     Q_PROPERTY(SourceModel* sourceModel READ sourceModel CONSTANT)
     Q_PROPERTY(SerialPortModel* serialPortModel READ serialPortModel CONSTANT)
     Q_PROPERTY(bool darkTheme READ darkTheme WRITE setDarkTheme NOTIFY darkThemeChanged)
+    Q_PROPERTY(bool imperial READ imperial WRITE setImperial NOTIFY presentationUnitsChanged)
+    Q_PROPERTY(QString sessionPath READ sessionPath WRITE setSessionPath NOTIFY settingsChanged)
+    Q_PROPERTY(QString exportPath READ exportPath WRITE setExportPath NOTIFY settingsChanged)
+    Q_PROPERTY(QString preferredPort READ preferredPort WRITE setPreferredPort NOTIFY settingsChanged)
+    Q_PROPERTY(int preferredBaud READ preferredBaud WRITE setPreferredBaud NOTIFY settingsChanged)
+    Q_PROPERTY(QString dtcDatabasePath READ dtcDatabasePath WRITE setDtcDatabasePath NOTIFY settingsChanged)
+    Q_PROPERTY(QString dtcDatabaseStatus READ dtcDatabaseStatus NOTIFY dtcLookupChanged)
+    Q_PROPERTY(QString dtcLookupMessage READ dtcLookupMessage NOTIFY dtcLookupChanged)
+    Q_PROPERTY(QString selectedSessionPath READ selectedSessionPath NOTIFY playbackChanged)
+    Q_PROPERTY(QString playbackState READ playbackState NOTIFY playbackChanged)
+    Q_PROPERTY(qint64 playbackPositionUs READ playbackPositionUs NOTIFY playbackChanged)
+    Q_PROPERTY(qint64 playbackDurationUs READ playbackDurationUs NOTIFY playbackChanged)
+    Q_PROPERTY(double playbackSpeed READ playbackSpeed NOTIFY playbackChanged)
+    Q_PROPERTY(QString sessionActionMessage READ sessionActionMessage NOTIFY playbackChanged)
     Q_PROPERTY(QString connectionState READ connectionState NOTIFY connectionStateChanged)
     Q_PROPERTY(QString lastError READ lastError NOTIFY lastErrorChanged)
     Q_PROPERTY(bool sourceOperationsEnabled READ sourceOperationsEnabled NOTIFY sourceOperationsEnabledChanged)
@@ -79,9 +95,24 @@ public:
     FindingModel* findingModel() noexcept { return &finding_model_; }
     RawDiagnosticModel* rawDiagnosticModel() noexcept { return &raw_diagnostic_model_; }
     SessionModel* sessionModel() noexcept { return &session_model_; }
+    DtcLookupModel* dtcLookupModel() noexcept { return &dtc_lookup_model_; }
     SourceModel* sourceModel() noexcept { return &source_model_; }
     SerialPortModel* serialPortModel() noexcept { return &serial_port_model_; }
     bool darkTheme() const noexcept { return dark_theme_; }
+    bool imperial() const noexcept { return telemetry_model_.unitSystem() == TelemetryModel::UnitSystem::Imperial; }
+    QString sessionPath() const { return session_path_; }
+    QString exportPath() const { return export_path_; }
+    QString preferredPort() const { return preferred_port_; }
+    int preferredBaud() const noexcept { return preferred_baud_; }
+    QString dtcDatabasePath() const { return dtc_database_path_; }
+    QString dtcDatabaseStatus() const { return dtc_database_status_; }
+    QString dtcLookupMessage() const { return dtc_lookup_message_; }
+    QString selectedSessionPath() const { return selected_session_path_; }
+    QString playbackState() const { return playback_state_; }
+    qint64 playbackPositionUs() const noexcept { return playback_position_us_; }
+    qint64 playbackDurationUs() const noexcept { return playback_duration_us_; }
+    double playbackSpeed() const noexcept { return playback_speed_; }
+    QString sessionActionMessage() const { return session_action_message_; }
     QString connectionState() const { return connection_state_; }
     QString lastError() const { return last_error_; }
     bool sourceOperationsEnabled() const noexcept { return !source_operation_busy_ && !clear_confirmation_pending_; }
@@ -129,6 +160,21 @@ public:
 
     Q_INVOKABLE void setDarkTheme(bool value);
     Q_INVOKABLE void setImperial(bool value);
+    Q_INVOKABLE void setSessionPath(const QString& value);
+    Q_INVOKABLE void setExportPath(const QString& value);
+    Q_INVOKABLE void setPreferredPort(const QString& value);
+    Q_INVOKABLE void setPreferredBaud(int value);
+    Q_INVOKABLE void setDtcDatabasePath(const QString& value);
+    Q_INVOKABLE void refreshSessions();
+    Q_INVOKABLE void selectSession(int row);
+    Q_INVOKABLE void playSession();
+    Q_INVOKABLE void pauseSession();
+    Q_INVOKABLE void stepSession();
+    Q_INVOKABLE void stopSession();
+    Q_INVOKABLE void seekSession(qint64 targetUs);
+    Q_INVOKABLE void setSessionSpeed(double multiplier);
+    Q_INVOKABLE void exportSelectedSession(const QString& destination, int preset = 0);
+    Q_INVOKABLE void lookupDtc(const QString& query);
     Q_INVOKABLE void disconnectSource();
     Q_INVOKABLE void refreshSerialPorts();
     Q_INVOKABLE void connectSerial(const QString& port, int baud);
@@ -160,6 +206,9 @@ signals:
     void chartSample(int metricId, double value);
     void diagnosticStateChanged();
     void simulatorStateChanged();
+    void settingsChanged();
+    void playbackChanged();
+    void dtcLookupChanged();
 
 private:
     void onEngineEvent(const core::EngineEvent& event);
@@ -173,6 +222,10 @@ private:
     void updateClearCountdown();
     void refreshDiagnosticModels();
     void finishSimulationCommand(core::Result<void> result);
+    void finishPlaybackCommand(core::Result<void> result, const QString& successState = {});
+    void loadSettings();
+    void loadDtcDatabase();
+    [[nodiscard]] QString validatedDirectory(const QString& stored, const QString& fallbackLeaf) const;
     double observedMetric(core::MetricId metric) const noexcept;
 
     std::unique_ptr<core::EngineService> engine_;
@@ -182,6 +235,7 @@ private:
     FindingModel finding_model_;
     RawDiagnosticModel raw_diagnostic_model_;
     SessionModel session_model_;
+    DtcLookupModel dtc_lookup_model_;
     SourceModel source_model_;
     SerialPortModel serial_port_model_;
     SerialPortEnumerator port_enumerator_;
@@ -219,6 +273,21 @@ private:
     QString clear_result_;
     int clear_countdown_seconds_{0};
     drivers::SimulationRuntimeState simulation_state_{};
+    std::unique_ptr<QSettings> settings_;
+    std::shared_ptr<diagnostics::DtcDatabase> dtc_database_;
+    QString session_path_;
+    QString export_path_;
+    QString preferred_port_;
+    int preferred_baud_{38400};
+    QString dtc_database_path_;
+    QString dtc_database_status_;
+    QString dtc_lookup_message_;
+    QString selected_session_path_;
+    QString playback_state_{QStringLiteral("Stopped")};
+    qint64 playback_position_us_{0};
+    qint64 playback_duration_us_{0};
+    double playback_speed_{1.0};
+    QString session_action_message_;
 };
 
 } // namespace revdash::app

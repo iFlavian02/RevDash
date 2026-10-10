@@ -1865,30 +1865,30 @@ ctest --preset windows-msvc-debug -R simulator_workspace --output-on-failure
 
 ### Sessions
 
-* [ ] Session list.
-* [ ] Metadata.
-* [ ] timestamps.
-* [ ] source/vehicle.
-* [ ] DTC count.
-* [ ] file size.
-* [ ] recoverable `.partial` indication.
-* [ ] Playback controls.
-* [ ] Seek/scrub.
-* [ ] speed selection.
-* [ ] CSV export.
+* [x] Session list.
+* [x] Metadata.
+* [x] timestamps.
+* [x] source/vehicle.
+* [x] DTC count.
+* [x] file size.
+* [x] recoverable `.partial` indication.
+* [x] Playback controls.
+* [x] Seek/scrub.
+* [x] speed selection.
+* [x] CSV export.
 
 ### Settings & DTC Lookup
 
-* [ ] Metric/Imperial.
-* [ ] theme.
-* [ ] default session/export paths.
-* [ ] preferred connection parameters.
-* [ ] DTC exact lookup.
-* [ ] keyword search.
-* [ ] severity/likely-point display when supplied by licensed data.
-* [ ] Use `QSettings` for preferences.
-* [ ] Resolve files through appropriate `QStandardPaths` locations.
-* [ ] Never write user sessions/configuration into installation directory.
+* [x] Metric/Imperial.
+* [x] theme.
+* [x] default session/export paths.
+* [x] preferred connection parameters.
+* [x] DTC exact lookup.
+* [x] keyword search.
+* [x] severity/likely-point display when supplied by licensed data.
+* [x] Use `QSettings` for preferences.
+* [x] Resolve files through appropriate `QStandardPaths` locations.
+* [x] Never write user sessions/configuration into installation directory.
 
 ### Tests
 

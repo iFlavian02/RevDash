@@ -8,6 +8,7 @@
 #include "revdash/core/diagnostic_types.hpp"
 #include "revdash/core/telemetry_types.hpp"
 #include "revdash/drivers/serial_transport.hpp"
+#include "revdash/diagnostics/dtc_database.hpp"
 
 namespace revdash::app {
 
@@ -111,18 +112,47 @@ private:
     bool paused_{false};
 };
 
-struct SessionEntry { QString name; QString path; QString source; QString startedAt; };
+struct SessionEntry {
+    QString name;
+    QString path;
+    QString source;
+    QString startedAt;
+    QString vehicle;
+    QString fileSize;
+    qint64 fileSizeBytes{0};
+    qint64 durationUs{0};
+    quint64 dtcCount{0};
+    bool recoverable{false};
+};
 class SessionModel final : public QAbstractListModel {
     Q_OBJECT
 public:
-    enum Role { NameRole = Qt::UserRole + 1, PathRole, SourceRole, StartedAtRole };
+    enum Role {
+        NameRole = Qt::UserRole + 1, PathRole, SourceRole, StartedAtRole, VehicleRole,
+        DtcCountRole, FileSizeRole, FileSizeBytesRole, DurationUsRole, RecoverableRole
+    };
     explicit SessionModel(QObject* parent = nullptr) : QAbstractListModel(parent) {}
     int rowCount(const QModelIndex& parent = {}) const override;
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
     void setSessions(QList<SessionEntry> sessions);
+    [[nodiscard]] const SessionEntry* entry(int row) const noexcept;
 private:
     QList<SessionEntry> sessions_;
+};
+
+class DtcLookupModel final : public QAbstractListModel {
+    Q_OBJECT
+public:
+    enum Role { CodeRole = Qt::UserRole + 1, DescriptionRole, SeverityRole, FailurePointsRole, SourceVersionRole };
+    explicit DtcLookupModel(QObject* parent = nullptr) : QAbstractListModel(parent) {}
+    int rowCount(const QModelIndex& parent = {}) const override;
+    QVariant data(const QModelIndex& index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+    void setDefinitions(std::vector<diagnostics::DtcDefinition> definitions);
+    void clear();
+private:
+    std::vector<diagnostics::DtcDefinition> definitions_;
 };
 
 struct SourceEntry { core::DataSourceType type; QString name; bool available; };

@@ -1,5 +1,5 @@
 CompileFlags:
-  CompilationDatabase: "."
+  CompilationDatabase: "build/windows-msvc"
   Add:
     - "-std=c++20"
     - "-ID:/Apps/RevDash/headers"

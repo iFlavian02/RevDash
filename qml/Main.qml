@@ -34,6 +34,8 @@ ApplicationWindow {
                 TabButton { text: qsTr("Live Dashboard") }
                 TabButton { text: qsTr("Diagnostics") }
                 TabButton { text: qsTr("Simulator") }
+                TabButton { text: qsTr("Sessions") }
+                TabButton { text: qsTr("Settings & Lookup") }
             }
             Label { text: root.controller.connectionState; color: root.controller.connectionState === "Ready" ? root.accent : root.secondaryText }
             Switch { text: qsTr("Imperial"); onToggled: root.controller.setImperial(checked) }
@@ -454,6 +456,144 @@ ApplicationWindow {
                     }
                 }
             }
+        }
+
+        Item {
+            objectName: "sessionsWorkspace"
+            RowLayout {
+                anchors.fill: parent; spacing: 18
+                Panel {
+                    Layout.fillHeight: true; Layout.preferredWidth: 470
+                    ColumnLayout {
+                        anchors { fill: parent; margins: 18 }
+                        spacing: 10
+                        RowLayout { Layout.fillWidth: true
+                            Label { text: qsTr("Recorded sessions"); color: root.primaryText; font.pixelSize: 22; font.bold: true }
+                            Item { Layout.fillWidth: true }
+                            Button { objectName: "refreshSessionsButton"; text: qsTr("Refresh"); onClicked: root.controller.refreshSessions() }
+                        }
+                        Caption { text: root.controller.sessionPath; Layout.fillWidth: true; elide: Text.ElideMiddle }
+                        ListView {
+                            id: sessionList; objectName: "sessionList"; Layout.fillWidth: true; Layout.fillHeight: true
+                            model: root.controller.sessionModel; clip: true; spacing: 8
+                            delegate: Rectangle {
+                                id: sessionRow
+                                required property int index; required property string name; required property string path
+                                required property string source; required property string startedAt; required property string vehicle
+                                required property var dtcCount; required property string fileSize; required property bool recoverable
+                                width: sessionList.width; height: sessionDetails.implicitHeight + 18; radius: 7
+                                color: sessionList.currentIndex === index ? (root.controller.darkTheme ? "#304139" : "#dff5e9") : (root.controller.darkTheme ? "#222c33" : "#f3f6f8")
+                                MouseArea { anchors.fill: parent; onClicked: { sessionList.currentIndex = sessionRow.index; root.controller.selectSession(sessionRow.index) } }
+                                ColumnLayout { id: sessionDetails; anchors { left: parent.left; right: parent.right; top: parent.top; margins: 9 } spacing: 3
+                                    RowLayout { Layout.fillWidth: true
+                                        ValueText { text: sessionRow.name }
+                                        Label { visible: sessionRow.recoverable; text: qsTr("RECOVERABLE .partial"); color: "#ffb454"; font.bold: true; font.pixelSize: 11 }
+                                        Item { Layout.fillWidth: true }
+                                        Caption { text: sessionRow.fileSize }
+                                    }
+                                    Caption { text: sessionRow.startedAt + " · " + sessionRow.source; Layout.fillWidth: true }
+                                    Caption { text: qsTr("%1 · %2 DTC record(s)").arg(sessionRow.vehicle).arg(sessionRow.dtcCount); Layout.fillWidth: true; elide: Text.ElideRight }
+                                }
+                            }
+                        }
+                    }
+                }
+                Panel {
+                    objectName: "playbackPanel"; Layout.fillWidth: true; Layout.fillHeight: true
+                    ColumnLayout {
+                        anchors { fill: parent; margins: 22 }
+                        spacing: 14
+                        Label { text: qsTr("Playback & export"); color: root.primaryText; font.pixelSize: 22; font.bold: true }
+                        Caption { text: root.controller.selectedSessionPath.length ? root.controller.selectedSessionPath : qsTr("Select a completed session."); Layout.fillWidth: true; elide: Text.ElideMiddle }
+                        ValueText { text: root.controller.playbackState }
+                        Slider {
+                            id: playbackScrubber; objectName: "playbackScrubber"; Layout.fillWidth: true
+                            from: 0; to: Math.max(1, root.controller.playbackDurationUs); value: root.controller.playbackPositionUs
+                            onMoved: root.controller.seekSession(value)
+                        }
+                        Caption { text: qsTr("%1 s / %2 s").arg((root.controller.playbackPositionUs / 1000000).toFixed(1)).arg((root.controller.playbackDurationUs / 1000000).toFixed(1)) }
+                        RowLayout { Layout.fillWidth: true
+                            Button { objectName: "playSessionButton"; text: qsTr("Play"); onClicked: root.controller.playSession() }
+                            Button { objectName: "pauseSessionButton"; text: qsTr("Pause"); onClicked: root.controller.pauseSession() }
+                            Button { objectName: "stepSessionButton"; text: qsTr("Step"); onClicked: root.controller.stepSession() }
+                            Button { objectName: "stopSessionButton"; text: qsTr("Stop"); onClicked: root.controller.stopSession() }
+                            Item { Layout.fillWidth: true }
+                            ComboBox { objectName: "playbackSpeedBox"; model: ["0.5×", "1×", "2×", "5×"]; currentIndex: 1; onActivated: root.controller.setSessionSpeed([0.5, 1, 2, 5][currentIndex]) }
+                        }
+                        Button { objectName: "openExportDialogButton"; text: qsTr("Export CSV…"); enabled: root.controller.selectedSessionPath.length > 0; onClicked: exportDialog.open() }
+                        Label { text: root.controller.sessionActionMessage; color: root.controller.darkTheme ? "#ffcf86" : "#8a5300"; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        Item { Layout.fillHeight: true }
+                    }
+                }
+            }
+        }
+
+        Item {
+            objectName: "settingsWorkspace"
+            RowLayout {
+                anchors.fill: parent; spacing: 18
+                Panel {
+                    objectName: "settingsPanel"; Layout.fillHeight: true; Layout.preferredWidth: 470
+                    ColumnLayout {
+                        anchors { fill: parent; margins: 20 }
+                        spacing: 10
+                        Label { text: qsTr("Settings"); color: root.primaryText; font.pixelSize: 22; font.bold: true }
+                        Switch { objectName: "settingsImperialToggle"; text: qsTr("Use Imperial display units"); checked: root.controller.imperial; onToggled: root.controller.setImperial(checked) }
+                        Switch { objectName: "settingsThemeToggle"; text: qsTr("Dark theme"); checked: root.controller.darkTheme; onToggled: root.controller.setDarkTheme(checked) }
+                        Caption { text: qsTr("Default session folder") }
+                        TextField { objectName: "sessionPathField"; Layout.fillWidth: true; text: root.controller.sessionPath; onEditingFinished: root.controller.setSessionPath(text) }
+                        Caption { text: qsTr("Default export folder") }
+                        TextField { objectName: "exportPathField"; Layout.fillWidth: true; text: root.controller.exportPath; onEditingFinished: root.controller.setExportPath(text) }
+                        Caption { text: qsTr("Preferred ELM327 port") }
+                        TextField { objectName: "preferredPortField"; Layout.fillWidth: true; text: root.controller.preferredPort; placeholderText: qsTr("COM3"); onEditingFinished: root.controller.setPreferredPort(text) }
+                        Caption { text: qsTr("Preferred baud rate") }
+                        ComboBox { objectName: "preferredBaudBox"; model: [9600, 38400, 115200]; currentIndex: model.indexOf(root.controller.preferredBaud); onActivated: root.controller.setPreferredBaud(currentValue) }
+                        Caption { text: qsTr("Licensed production DTC database") }
+                        TextField { objectName: "dtcDatabasePathField"; Layout.fillWidth: true; text: root.controller.dtcDatabasePath; onEditingFinished: root.controller.setDtcDatabasePath(text) }
+                        Caption { text: root.controller.dtcDatabaseStatus; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        Item { Layout.fillHeight: true }
+                    }
+                }
+                Panel {
+                    objectName: "dtcLookupPanel"; Layout.fillWidth: true; Layout.fillHeight: true
+                    ColumnLayout {
+                        anchors { fill: parent; margins: 20 }
+                        spacing: 10
+                        Label { text: qsTr("DTC lookup"); color: root.primaryText; font.pixelSize: 22; font.bold: true }
+                        RowLayout { Layout.fillWidth: true
+                            TextField { id: dtcLookupInput; objectName: "dtcLookupInput"; Layout.fillWidth: true; placeholderText: qsTr("P0300 or misfire cylinder"); onAccepted: root.controller.lookupDtc(text) }
+                            Button { objectName: "dtcLookupButton"; text: qsTr("Search"); onClicked: root.controller.lookupDtc(dtcLookupInput.text) }
+                        }
+                        Caption { text: root.controller.dtcLookupMessage; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                        ListView {
+                            id: lookupList; objectName: "dtcLookupList"; Layout.fillWidth: true; Layout.fillHeight: true; clip: true; spacing: 8
+                            model: root.controller.dtcLookupModel
+                            delegate: Rectangle {
+                                id: lookupRow; required property string code; required property string description; required property string severity; required property var failurePoints; required property string sourceVersion
+                                width: lookupList.width; height: lookupDetails.implicitHeight + 18; radius: 7; color: root.controller.darkTheme ? "#222c33" : "#f3f6f8"
+                                ColumnLayout { id: lookupDetails; anchors { left: parent.left; right: parent.right; top: parent.top; margins: 9 } spacing: 4
+                                    RowLayout { Layout.fillWidth: true; ValueText { text: lookupRow.code } Item { Layout.fillWidth: true } Label { text: lookupRow.severity; color: root.accent; font.bold: true } }
+                                    Label { text: lookupRow.description; color: root.primaryText; Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                    Caption { visible: lookupRow.failurePoints.length > 0; text: qsTr("Likely checks: %1").arg(lookupRow.failurePoints.join(", ")); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+                                    Caption { text: qsTr("Data source: %1").arg(lookupRow.sourceVersion) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: exportDialog; objectName: "exportDialog"; modal: true; anchors.centerIn: parent
+        width: Math.min(560, root.width - 60); title: qsTr("Export session as CSV"); standardButtons: Dialog.Cancel
+        ColumnLayout {
+            width: parent.width; spacing: 10
+            Caption { text: qsTr("Destination path (leave empty to use the default export folder)"); Layout.fillWidth: true; wrapMode: Text.WordWrap }
+            TextField { id: exportDestination; objectName: "exportDestinationField"; Layout.fillWidth: true; placeholderText: root.controller.exportPath }
+            ComboBox { id: exportPreset; objectName: "exportPresetBox"; Layout.fillWidth: true; model: [qsTr("RevDash"), qsTr("MegaLogViewer"), qsTr("TunerStudio")] }
+            Button { objectName: "confirmExportButton"; text: qsTr("Export"); highlighted: true; Layout.alignment: Qt.AlignRight; onClicked: { root.controller.exportSelectedSession(exportDestination.text, exportPreset.currentIndex); exportDialog.close() } }
         }
     }
 

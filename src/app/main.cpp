@@ -13,6 +13,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char** argv) {
 
 #if defined(REVDASH_HAS_QT)
     QGuiApplication app(argc, argv);
+    QCoreApplication::setOrganizationName(QStringLiteral("RevDash"));
+    QCoreApplication::setOrganizationDomain(QStringLiteral("revdash.local"));
     app.setApplicationName(QString::fromUtf8(revdash::core::kApplicationName.data(), revdash::core::kApplicationName.size()));
     app.setApplicationVersion(QString::fromUtf8(revdash::core::kApplicationVersion.data(), revdash::core::kApplicationVersion.size()));
 

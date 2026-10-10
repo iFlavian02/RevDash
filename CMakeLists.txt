@@ -264,6 +264,8 @@ if(Qt6_FOUND)
         tests/ui/test_dashboard_workspace.cpp
         tests/ui/test_diagnostics_workspace.cpp
         tests/ui/test_simulator_workspace.cpp
+        tests/ui/test_sessions_workspace.cpp
+        tests/ui/test_settings_workspace.cpp
         src/app/app_controller.cpp
         src/app/models.cpp
         src/app/telemetry_chart_item.cpp
@@ -289,6 +291,8 @@ if(Qt6_FOUND)
     add_test(NAME dashboard_workspace COMMAND revdash_ui_tests "[dashboard_workspace]")
     add_test(NAME diagnostics_workspace COMMAND revdash_ui_tests "[diagnostics_workspace]")
     add_test(NAME simulator_workspace COMMAND revdash_ui_tests "[simulator_workspace]")
+    add_test(NAME sessions_workspace COMMAND revdash_ui_tests "[sessions_workspace]")
+    add_test(NAME settings_workspace COMMAND revdash_ui_tests "[settings_workspace]")
     get_filename_component(revdash_qt_bin_dir "${Qt6_DIR}/../../../bin" ABSOLUTE)
     if(WIN32)
         set(revdash_qpa_platform windows)
@@ -312,6 +316,10 @@ if(Qt6_FOUND)
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
     )
     set_tests_properties(simulator_workspace PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=${revdash_qpa_platform};QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
+        ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
+    )
+    set_tests_properties(sessions_workspace settings_workspace PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=${revdash_qpa_platform};QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
     )

@@ -222,9 +222,39 @@ void RawDiagnosticModel::rebuildVisible() {
 }
 
 int SessionModel::rowCount(const QModelIndex& parent) const { return parent.isValid()?0:sessions_.size(); }
-QVariant SessionModel::data(const QModelIndex& index,int role) const { if(!index.isValid()||index.row()<0||index.row()>=sessions_.size())return{}; const auto& item=sessions_[index.row()]; switch(role){case NameRole:return item.name;case PathRole:return item.path;case SourceRole:return item.source;case StartedAtRole:return item.startedAt;default:return{};} }
-QHash<int,QByteArray> SessionModel::roleNames() const { return {{NameRole,"name"},{PathRole,"path"},{SourceRole,"source"},{StartedAtRole,"startedAt"}}; }
+QVariant SessionModel::data(const QModelIndex& index,int role) const {
+    if(!index.isValid()||index.row()<0||index.row()>=sessions_.size())return{};
+    const auto& item=sessions_[index.row()];
+    switch(role){
+        case NameRole:return item.name; case PathRole:return item.path; case SourceRole:return item.source;
+        case StartedAtRole:return item.startedAt; case VehicleRole:return item.vehicle; case DtcCountRole:return item.dtcCount;
+        case FileSizeRole:return item.fileSize; case FileSizeBytesRole:return item.fileSizeBytes;
+        case DurationUsRole:return item.durationUs; case RecoverableRole:return item.recoverable; default:return{};
+    }
+}
+QHash<int,QByteArray> SessionModel::roleNames() const { return {
+    {NameRole,"name"},{PathRole,"path"},{SourceRole,"source"},{StartedAtRole,"startedAt"},{VehicleRole,"vehicle"},
+    {DtcCountRole,"dtcCount"},{FileSizeRole,"fileSize"},{FileSizeBytesRole,"fileSizeBytes"},
+    {DurationUsRole,"durationUs"},{RecoverableRole,"recoverable"}}; }
 void SessionModel::setSessions(QList<SessionEntry> sessions) { assertOwnerThread(this); beginResetModel(); sessions_=std::move(sessions); endResetModel(); }
+const SessionEntry* SessionModel::entry(int row) const noexcept { return row >= 0 && row < sessions_.size() ? &sessions_[row] : nullptr; }
+
+int DtcLookupModel::rowCount(const QModelIndex& parent) const { return parent.isValid() ? 0 : static_cast<int>(definitions_.size()); }
+QVariant DtcLookupModel::data(const QModelIndex& index, int role) const {
+    if (!index.isValid() || index.row() < 0 || index.row() >= rowCount()) return {};
+    const auto& definition = definitions_[static_cast<std::size_t>(index.row())];
+    switch (role) {
+        case CodeRole: return QString::fromStdString(definition.code);
+        case DescriptionRole: return QString::fromStdString(definition.description);
+        case SeverityRole: return text(core::toString(definition.severity));
+        case FailurePointsRole: { QStringList values; for (const auto& value : definition.likely_failure_points) values.push_back(QString::fromStdString(value)); return values; }
+        case SourceVersionRole: return QString::fromStdString(definition.source_version);
+        default: return {};
+    }
+}
+QHash<int,QByteArray> DtcLookupModel::roleNames() const { return {{CodeRole,"code"},{DescriptionRole,"description"},{SeverityRole,"severity"},{FailurePointsRole,"failurePoints"},{SourceVersionRole,"sourceVersion"}}; }
+void DtcLookupModel::setDefinitions(std::vector<diagnostics::DtcDefinition> definitions) { assertOwnerThread(this); beginResetModel(); definitions_=std::move(definitions); endResetModel(); }
+void DtcLookupModel::clear() { setDefinitions({}); }
 
 SourceModel::SourceModel(QObject* parent):QAbstractListModel(parent),sources_{{core::DataSourceType::SerialElm327,tr("ELM327"),true},{core::DataSourceType::Synthetic,tr("Simulation"),true},{core::DataSourceType::Playback,tr("Session playback"),true},{core::DataSourceType::SocketCan,tr("SocketCAN"),false}} {}
 int SourceModel::rowCount(const QModelIndex& parent) const { return parent.isValid()?0:sources_.size(); }

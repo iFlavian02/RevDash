@@ -399,6 +399,17 @@ void EngineService::querySimulationState(SimulationStateCompletion completion) {
     });
 }
 
+void EngineService::queryPlaybackState(PlaybackStateCompletion completion) {
+    enqueue([this, completion = std::move(completion)]() mutable {
+        if (!completion) return;
+        if (const auto* source = dynamic_cast<const drivers::PlaybackDataSource*>(source_.get())) {
+            completion(PlaybackRuntimeStatus{.state = source->playbackState(), .position = source->position(), .duration = source->duration()});
+        } else {
+            completion(std::nullopt);
+        }
+    });
+}
+
 void EngineService::querySourceStatus(SourceStatusCompletion completion) {
     enqueue([this, completion = std::move(completion)] {
         if (!completion) return;
