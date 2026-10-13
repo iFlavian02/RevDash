@@ -7,11 +7,27 @@
 
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include "app/models.hpp"
 #include "revdash/core/engine_service.hpp"
 
 namespace revdash::app {
+
+struct LatencySummary {
+    std::size_t sampleCount{0};
+    double p95Ms{0.0};
+    double p99Ms{0.0};
+    double maximumMs{0.0};
+};
+
+struct UiPerformanceSnapshot {
+    LatencySummary engineSnapshotAge;
+    LatencySummary controllerProcessing;
+    LatencySummary chartUpdateWork;
+    LatencySummary mainThreadUpdateWork;
+    LatencySummary visibleUiLatency;
+};
 
 class AppController final : public QObject {
     Q_OBJECT
@@ -157,6 +173,7 @@ public:
     double simulationObservedSpeed() const noexcept;
     double simulationObservedCoolant() const noexcept;
     double simulationObservedMap() const noexcept;
+    [[nodiscard]] UiPerformanceSnapshot uiPerformanceSnapshot() const;
 
     Q_INVOKABLE void setDarkTheme(bool value);
     Q_INVOKABLE void setImperial(bool value);
@@ -193,6 +210,8 @@ public:
     Q_INVOKABLE void setSimulationAmbientTemperature(double celsius);
     Q_INVOKABLE void setSimulationFaults(bool misfire, bool vacuumLeak, bool thermostatFault, double noise, double dropout);
     Q_INVOKABLE void resetSimulation();
+    Q_INVOKABLE void resetUiPerformanceMetrics();
+    Q_INVOKABLE void recordVisibleUiLatency(double milliseconds);
 
 signals:
     void darkThemeChanged();
@@ -227,6 +246,8 @@ private:
     void loadDtcDatabase();
     [[nodiscard]] QString validatedDirectory(const QString& stored, const QString& fallbackLeaf) const;
     double observedMetric(core::MetricId metric) const noexcept;
+    static LatencySummary summarizeLatency(const std::vector<double>& samples);
+    static void appendLatency(std::vector<double>& samples, double milliseconds);
 
     std::unique_ptr<core::EngineService> engine_;
     core::SubscriptionToken engine_subscription_;
@@ -288,6 +309,11 @@ private:
     qint64 playback_duration_us_{0};
     double playback_speed_{1.0};
     QString session_action_message_;
+    std::vector<double> engine_snapshot_age_samples_;
+    std::vector<double> controller_processing_samples_;
+    std::vector<double> chart_update_samples_;
+    std::vector<double> main_thread_update_samples_;
+    std::vector<double> visible_ui_latency_samples_;
 };
 
 } // namespace revdash::app

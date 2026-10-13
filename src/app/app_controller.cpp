@@ -10,6 +10,7 @@
 #include <QStandardPaths>
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <limits>
 #include <nlohmann/json.hpp>
@@ -22,6 +23,8 @@
 
 namespace revdash::app {
 namespace {
+constexpr std::size_t kMaximumLatencySamples = 4096;
+
 QString text(std::string_view value) { return QString::fromUtf8(value.data(), static_cast<qsizetype>(value.size())); }
 
 QString actionableError(const core::Error& error) {
@@ -459,6 +462,49 @@ double AppController::simulationObservedSpeed() const noexcept { return observed
 double AppController::simulationObservedCoolant() const noexcept { return observedMetric(core::MetricId::CoolantTemp); }
 double AppController::simulationObservedMap() const noexcept { return observedMetric(core::MetricId::Map); }
 
+void AppController::appendLatency(std::vector<double>& samples, double milliseconds) {
+    if (!std::isfinite(milliseconds) || milliseconds < 0.0) return;
+    if (samples.size() == kMaximumLatencySamples) samples.erase(samples.begin());
+    samples.push_back(milliseconds);
+}
+
+LatencySummary AppController::summarizeLatency(const std::vector<double>& samples) {
+    if (samples.empty()) return {};
+    auto ordered = samples;
+    std::ranges::sort(ordered);
+    const auto percentile = [&ordered](double fraction) {
+        const auto rank = static_cast<std::size_t>(std::ceil(fraction * static_cast<double>(ordered.size())));
+        return ordered[std::min(ordered.size() - 1, std::max<std::size_t>(1, rank) - 1)];
+    };
+    return {.sampleCount = ordered.size(), .p95Ms = percentile(0.95), .p99Ms = percentile(0.99),
+        .maximumMs = ordered.back()};
+}
+
+UiPerformanceSnapshot AppController::uiPerformanceSnapshot() const {
+    Q_ASSERT(QThread::currentThread() == thread());
+    return {
+        .engineSnapshotAge = summarizeLatency(engine_snapshot_age_samples_),
+        .controllerProcessing = summarizeLatency(controller_processing_samples_),
+        .chartUpdateWork = summarizeLatency(chart_update_samples_),
+        .mainThreadUpdateWork = summarizeLatency(main_thread_update_samples_),
+        .visibleUiLatency = summarizeLatency(visible_ui_latency_samples_),
+    };
+}
+
+void AppController::resetUiPerformanceMetrics() {
+    Q_ASSERT(QThread::currentThread() == thread());
+    engine_snapshot_age_samples_.clear();
+    controller_processing_samples_.clear();
+    chart_update_samples_.clear();
+    main_thread_update_samples_.clear();
+    visible_ui_latency_samples_.clear();
+}
+
+void AppController::recordVisibleUiLatency(double milliseconds) {
+    Q_ASSERT(QThread::currentThread() == thread());
+    appendLatency(visible_ui_latency_samples_, milliseconds);
+}
+
 void AppController::finishSimulationCommand(core::Result<void> result) {
     if (result) return;
     last_error_ = actionableError(result.error());
@@ -550,18 +596,34 @@ void AppController::applyEngineEvent(core::EngineEvent event) {
 
 void AppController::pollTelemetry() {
     Q_ASSERT(QThread::currentThread() == thread());
+    const auto processing_started = core::MonotonicClock::now();
     latest_snapshot_ = engine_->telemetrySnapshot();
     telemetry_model_.setSnapshot(latest_snapshot_);
     latest_sample_age_ms_ = telemetry_model_.maximumSampleAgeMs();
     emit telemetryHealthChanged();
+    const auto processing_finished = core::MonotonicClock::now();
+    const auto has_sample = std::ranges::any_of(latest_snapshot_.samples, [](const auto& sample) {
+        return sample.isValid();
+    });
+    if (has_sample) {
+        appendLatency(engine_snapshot_age_samples_,
+            std::chrono::duration<double, std::milli>(processing_started - latest_snapshot_.snapshot_monotonic_ts).count());
+    }
+    const auto work_ms = std::chrono::duration<double, std::milli>(processing_finished - processing_started).count();
+    appendLatency(controller_processing_samples_, work_ms);
+    appendLatency(main_thread_update_samples_, work_ms);
 }
 
 void AppController::publishChartBatch() {
     Q_ASSERT(QThread::currentThread() == thread());
+    const auto started = core::MonotonicClock::now();
     for (std::size_t i = 0; i < core::kMetricCount; ++i) {
         const auto& sample = latest_snapshot_.samples[i];
         if (sample.isValid()) emit chartSample(static_cast<int>(i), telemetry_model_.presentationValue(sample.metric_id, sample.value));
     }
+    const auto work_ms = std::chrono::duration<double, std::milli>(core::MonotonicClock::now() - started).count();
+    appendLatency(chart_update_samples_, work_ms);
+    appendLatency(main_thread_update_samples_, work_ms);
 }
 
 void AppController::pollSourceStatus() {

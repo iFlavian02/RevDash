@@ -29,6 +29,13 @@ ApplicationWindow {
             Label { text: qsTr("REVDASH"); color: root.primaryText; font.pixelSize: 22; font.bold: true; font.letterSpacing: 2 }
             TabBar {
                 id: workspaceTabs; objectName: "workspaceTabs"; Layout.fillWidth: true
+                property double navigationStartedAt: 0
+                onCurrentIndexChanged: {
+                    navigationStartedAt = Date.now()
+                    Qt.callLater(function() {
+                        root.controller.recordVisibleUiLatency(Date.now() - workspaceTabs.navigationStartedAt)
+                    })
+                }
                 background: Item {}
                 TabButton { text: qsTr("Connect") }
                 TabButton { text: qsTr("Live Dashboard") }

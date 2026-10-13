@@ -1912,21 +1912,21 @@ ctest --preset windows-msvc-debug -R "sessions_workspace|settings_workspace" --o
 
 ## Step 8.7: Validate UI responsiveness and end-to-end navigation
 
-* [ ] Run full-throughput synthetic telemetry with recording active.
-* [ ] Navigate repeatedly through all six workspaces.
-* [ ] Instrument:
+* [x] Run full-throughput synthetic telemetry with recording active.
+* [x] Navigate repeatedly through all six workspaces.
+* [x] Instrument:
 
   * engine snapshot age;
   * controller processing;
   * chart update work;
   * visible UI latency.
-* [ ] Acceptance targets under defined reference workload:
+* [x] Acceptance targets under defined reference workload:
 
   * p95 telemetry-to-UI latency <100 ms;
   * p95 main-thread update work <8 ms;
   * p99 main-thread update work <16.7 ms;
   * no sustained UI stall >250 ms.
-* [ ] Validate:
+* [x] Validate:
 
   * disconnects;
   * malformed packets;
@@ -1935,7 +1935,7 @@ ctest --preset windows-msvc-debug -R "sessions_workspace|settings_workspace" --o
   * export failures;
   * source reconnect;
   * playback seek.
-* [ ] Do not fail acceptance because of an isolated OS scheduler outlier if percentile/budget criteria remain satisfied.
+* [x] Do not fail acceptance because of an isolated OS scheduler outlier if percentile/budget criteria remain satisfied.
 
 ### Tests / Acceptance
 

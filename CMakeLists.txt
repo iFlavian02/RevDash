@@ -240,6 +240,7 @@ add_test(NAME session_recorder COMMAND revdash_unit_tests "[session_recorder]")
 add_test(NAME session_playback COMMAND revdash_unit_tests "[session_playback]")
 add_test(NAME csv_export COMMAND revdash_unit_tests "[csv_export]")
 add_test(NAME cli COMMAND revdash_unit_tests "[cli]")
+set_tests_properties(data_source_contract mode01 session_recorder session_playback csv_export PROPERTIES LABELS "ui_e2e")
 
 add_executable(revdash_integration_tests
     tests/integration/test_main.cpp
@@ -266,6 +267,7 @@ if(Qt6_FOUND)
         tests/ui/test_simulator_workspace.cpp
         tests/ui/test_sessions_workspace.cpp
         tests/ui/test_settings_workspace.cpp
+        tests/ui/test_ui_acceptance.cpp
         src/app/app_controller.cpp
         src/app/models.cpp
         src/app/telemetry_chart_item.cpp
@@ -293,6 +295,7 @@ if(Qt6_FOUND)
     add_test(NAME simulator_workspace COMMAND revdash_ui_tests "[simulator_workspace]")
     add_test(NAME sessions_workspace COMMAND revdash_ui_tests "[sessions_workspace]")
     add_test(NAME settings_workspace COMMAND revdash_ui_tests "[settings_workspace]")
+    add_test(NAME ui_e2e COMMAND revdash_ui_tests "[ui_e2e]")
     get_filename_component(revdash_qt_bin_dir "${Qt6_DIR}/../../../bin" ABSOLUTE)
     if(WIN32)
         set(revdash_qpa_platform windows)
@@ -319,8 +322,10 @@ if(Qt6_FOUND)
         ENVIRONMENT "QT_QPA_PLATFORM=${revdash_qpa_platform};QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
     )
-    set_tests_properties(sessions_workspace settings_workspace PROPERTIES
+    set_tests_properties(sessions_workspace settings_workspace ui_e2e PROPERTIES
         ENVIRONMENT "QT_QPA_PLATFORM=${revdash_qpa_platform};QML2_IMPORT_PATH=${CMAKE_CURRENT_BINARY_DIR}"
         ENVIRONMENT_MODIFICATION "PATH=path_list_prepend:${revdash_qt_bin_dir}"
     )
+    set_tests_properties(ui_e2e PROPERTIES LABELS "ui_e2e" TIMEOUT 45)
+    set_property(TEST connect_workspace sessions_workspace settings_workspace APPEND PROPERTY LABELS "ui_e2e")
 endif()
